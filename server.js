@@ -5,7 +5,7 @@ const E = require('./lib/engine'); const { FIGS, LIST } = require('./lib/figures
 const DB = require('./lib/db');
 const B = require('./lib/board'); const { botDeck, randomDeck, botAct } = require('./lib/bot');
 
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 3000;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
 const PUB = path.join(__dirname, 'public');
 
@@ -25,6 +25,7 @@ function handleApi(req, res, url) {
       if (url === '/api/register') { const r = DB.register(m.name, m.pass); return out(r.error ? 400 : 200, r); }
       if (url === '/api/login') { const r = DB.login(m.name, m.pass); return out(r.error ? 401 : 200, r); }
       if (url === '/api/leaderboard') return out(200, DB.leaderboard());
+      if (url === '/api/health') return out(200, { ok: true, db: DB.status() });
       const u = DB.who(tok); if (!u) return out(401, { error: 'not signed in' });
       if (url === '/api/pvp') return out(200, DB.pvpInfo(u));
       if (url === '/api/save' && req.method === 'GET') return out(200, { name: u, save: DB.getSave(u) });
@@ -155,4 +156,8 @@ wss.on('connection', ws => {
   });
 });
 // Clock: disconnected players still burn time
-server.listen(PORT, () => console.log('Pokémon Duel server on http://localhost:' + PORT));
+DB.init().then(() => {
+  server.listen(PORT, () => console.log('Pokémon Duel server on http://localhost:' + PORT));
+}).catch(e => { console.error('Could not open the database:', e.message); process.exit(1); });
+const shutdown = () => { DB.flush().finally(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); };
+process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);

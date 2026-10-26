@@ -96,6 +96,10 @@ v10.10: Gold now beats Purple (priority), as the rules text says; a bug made Pur
 - v10.22: Pokémon with two Z-Moves of the same colour (e.g. Magnemite's Corkscrew Crash / Gigavolt Havoc) now let you choose which one; the wheel uses only the chosen Z-Move.
 - v10.23: 'moves N steps back' (Shinx Blind, Sentret, Mew/Crobat Shuttle Flip) only offers points farther from the battle opponent; landing on the goal via any effect move already wins (v10.21).
 - v10.24: mobile layout pass (header wraps, board fits phone width, scrollable tabs, deck filters wrap, bigger touch targets); Dig implemented (moves away from attached Pokémon); Fly Away/Fly lands on any point around the opponent incl. the goal and a safety net ends the game if any effect leaves a Pokémon on its goal.
-"# pokkemonDuel" 
-"# pokemon_duel" 
-"# pokemon_duel" 
+- v10.25: persistent accounts on free hosting. Accounts/progress are written through to a hosted SQLite database (Turso, free tier) when `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` are set; otherwise a local file (`DUEL_DB`, default data/duel.sqlite) is used. Check `/api/health` to see which is active. Needs `npm install` (adds @libsql/client).
+
+### Free persistent database on Render (Turso)
+1. Sign up at turso.tech (free), create a database (any region near you).
+2. Copy its URL (`libsql://your-db-name-yourname.turso.io`) and create a token (Database → Generate Token, read & write).
+3. In Render → your web service → Environment add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. Build command `npm install`, start command `node server.js`.
+4. Redeploy. Open `/api/health` — it should say `"remote":true`. Accounts now survive sleeps and redeploys.
