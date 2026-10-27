@@ -4,7 +4,8 @@
   const RAR = ['C', 'UC', 'R', 'EX', 'UX'];
   const RCOL = { C: '#9aa7c7', UC: '#5cc77d', R: '#4aa3ff', EX: '#c58cf2', UX: '#ffcb05' };
   const RNAME = { C: 'Common', UC: 'Uncommon', R: 'Rare', EX: 'Ex', UX: 'Ultra' };
-  const SELL = { C: 100, UC: 180, R: 720, EX: 1600, UX: 2000 };
+  const SELL = { C: 200, UC: 600, R: 2000, EX: 5000, UX: 10000 };
+  const SHOP_PRICE = { C: 1000, UC: 3000, R: 10000, EX: 25000, UX: 50000 };
   const CHESTS = [
     { id: 'bronze', name: 'Bronze Chest', price: 1000, icon: '📦', col: '#b87333', odds: { C: 100, UC: 0, R: 0, EX: 0, UX: 0 } },
     { id: 'silver', name: 'Silver Chest', price: 5000, esc: 0.1, icon: '🎁', col: '#c0c8d8', odds: { C: 70, UC: 30, R: 0, EX: 0, UX: 0 } },
@@ -29,7 +30,7 @@
   const byRar = r => DATA.figures.filter(f => f.rarity === r);
 
   const STARTER_PLATES = ['plus_power', 'speed_boost', 'full_heal', 'switch'];
-  const platePrice = k => PL[k].cost * 150 + (PL[k].cost >= 2 ? 100 : 0);
+  const platePrice = k => (PL[k].cost >= 2 ? 4000 : 1500);
   function plateDrop(lines, why) { const left = Object.keys(PL).filter(k => !S.plates[k]); if (!left.length) return null; const k = left[(Math.random() * left.length) | 0]; S.plates[k] = 1; lines.push(`🔶 New plate: ${PL[k].name} (${why})! ${PL[k].text}`); return k; }
   let memOwner = null;
   try { Object.keys(localStorage).filter(k => k.startsWith(KEY)).forEach(k => localStorage.removeItem(k)); } catch (e) { } // saves live on the server only; remove old browser copies
@@ -323,7 +324,7 @@
     });
     chests.querySelectorAll('button').forEach(b => { if (b.getAttribute('disabled') === null) b.removeAttribute('disabled'); });
     const st = el('div', { class: 'figgrid' });
-    S.stock.forEach(id => { const f = fig(id); const price = f.cost; const can = S.coins >= price;
+    S.stock.forEach(id => { const f = fig(id); const price = SHOP_PRICE[f.rarity] || f.cost; const can = S.coins >= price;
       st.append(el('div', { class: 'cfig' + (can ? '' : ' dim'), style: 'border-color:' + RCOL[f.rarity], onmouseenter: () => infoCard($c('campInfo'), f) }, img(f), el('span', { class: 'mp' }, f.mp), rarTag(f), S.owned[id] ? el('span', { class: 'cnt' }, 'own ×' + S.owned[id]) : '', el('div', { class: 'nm' }, f.name),
         el('button', { class: 'buy', onclick: () => { if (S.coins < price) return; S.coins -= price; S.owned[id] = (S.owned[id] || 0) + 1; S.stock = S.stock.filter(x => x !== id); save(); render(); } }, '🪙' + price))); });
     const pb = el('div', { class: 'platebuy' });

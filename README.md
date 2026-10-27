@@ -168,3 +168,6 @@ Chest prices/odds are the owner's final numbers (see v10.42). Merge ratios (5 C�
 
 ## v10.45 — final
 Release pass: full regression (abilities 80/80, moves, fuzz 300 games, sim, arena, e2e), 21 browser checks for Merge / chest prices & rises / gem items / persistence, PvP + Random-deck + lobby-panel checks. Fixed the Gem Shop description overlapping its cards.
+
+## v10.46 — shop prices
+Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 25,000 · UX 50,000 (were 250/450/1,800/4,000/5,000). Plates 🪙1,500 (cost 1) / 4,000 (cost 2) (were ~150–400). Selling a duplicate pays C 200 · UC 600 · R 2,000 · EX 5,000 · UX 10,000, always well below the buy price. Prices sit around the average value of each chest's pulls so chests and the shop stay consistent.
