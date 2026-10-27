@@ -109,12 +109,13 @@ wss.on('connection', ws => {
     const c = ws.ctx;
     const mkSeat = (name, deck, bot, skill) => ({ ws: bot ? null : ws, name: String(name || 'Trainer').slice(0, 24), deck, bot: !!bot, skill: skill == null ? 0.4 : skill, token: Math.random().toString(36).slice(2) });
     if (m.t === 'quick') {
+      const rnd = !!m.random; if (rnd) { m.deck = randomDeck(Math.random); m.owned = false; }
       const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });
       const name = String(m.name || 'Trainer').slice(0, 24);
       let own = null; if (m.owned) { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
-      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.owned === !!own && (!own || r.seats[0].user !== own.user)) { q = r; break; }
+      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.random === rnd && !!r.owned === !!own && (!own || r.seats[0].user !== own.user)) { q = r; break; }
       if (q) { clearTimeout(q.qTimer); q.open = false; q.seats[1] = mkSeat(own ? own.user : name, m.deck); if (own) q.seats[1].user = own.user; c.room = q; c.seat = 1; send(ws, { t: 'room', code: q.code, seat: 1, token: q.seats[1].token }); startGame(q); return; }
-      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true }; if (own) { room.owned = true; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
+      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true, random: rnd }; if (own) { room.owned = true; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token }); send(ws, { t: 'waiting', code, quick: true });
       room.qTimer = setTimeout(() => {
         if (!room.open || room.seats[1] || room.game) return; room.open = false; room.owned = false; /* bot games never count for the ladder */

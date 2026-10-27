@@ -144,3 +144,27 @@ New currency 💎 (save field `gems`; existing saves get a one-time 10-gem gift)
 
 ## v10.37 — board slab
 The board is now a framed playfield: metallic bevelled frame with drop shadow, translucent tiled surface over the theme, top light + vignette, bench trays, dashed start lines and centre line, hazard-striped goal pads (orange = enemy goal, blue = yours), glossy double-layer lanes and raised nodes.
+
+## v10.38 — PvP with your collection from the lobby
+Signed-in players get a "🎒 Play PvP with my collection" panel at the top of the team-builder screen: pick one of your complete saved campaign decks (only cards/plates you own), then ⚡ Quick match, Create room or Join room. The server verifies ownership; these matches count on the PvP ladder (bot fill-ins do not). Guests keep the free picker.
+
+## v10.39 — readable move descriptions
+Move/effect text in the battle scene is larger, white, on a dark rounded panel.
+
+## v10.40 — Random-deck match
+Separate mode for everyone (signed in or not): "🎲 Random-deck match" in the team builder and in the collection panel. The server deals each player a random team from the whole roster, queues them only against other random-deck players (bot fills in after ~7 s), and it never counts on the PvP ladder.
+
+## v10.41 — chest economy
+Gold 🪙6,000 (was 2,500), Mythic 🪙20,000 (was 5,000). Gold/Mythic cost +10% per purchase made within the last 24 h (+15% for the new 🪙50,000 Vault Chest: EX 55% / Ultra 45%, 60% bonus-plate chance); the price falls back after 24 h without buying. A ▲ marks a raised price. Bronze/Silver unchanged. Save field `buys`.
+
+## v10.42 — chest prices (owner-specified)
+Bronze 🪙1,000 (Common only, no rise) · Silver 🪙5,000 (+10%/buy; C70 UC30) · Gold 🪙10,000 (+15%; C50 UC30 R20) · Mythic 🪙25,000 (+20%; UC10 R45 EX35 UX10) · Vault 🪙50,000 (+10%; EX55 UX45). Rise applies per purchase within 24 h.
+
+## v10.43 — Merge
+Shop → ⚗ Merge: 5 spare Common → 1 random Uncommon, 5 UC → 1 R, 6 R → 1 EX, 8 EX → 1 Ultra. Free. Only spare duplicates count (copies used by any deck and your last copy of each are never taken), the target rarity must be unlocked by shop tier, and the result favours Pokémon you don't own yet (50%).
+
+## v10.44 — chests final
+Chest prices/odds are the owner's final numbers (see v10.42). Merge ratios (5 C→UC, 5 UC→R, 6 R→EX, 8 EX→UX) are the designer's choice.
+
+## v10.45 — final
+Release pass: full regression (abilities 80/80, moves, fuzz 300 games, sim, arena, e2e), 21 browser checks for Merge / chest prices & rises / gem items / persistence, PvP + Random-deck + lobby-panel checks. Fixed the Gem Shop description overlapping its cards.

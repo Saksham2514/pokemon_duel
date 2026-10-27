@@ -17,7 +17,7 @@ try { const d = JSON.parse(localStorage.getItem('duel_deck') || 'null'); if (d) 
 // ------------------------------------------------------------ boot
 fetch('/api/data').then(r => r.json()).then(d => { DATA = d; d.figures.forEach(f => (FIG[f.id] = f)); PL = d.plates; BOARD = d.board; deck.figs = deck.figs.filter(i => FIG[i]); deck.plates = deck.plates.filter(k => PL[k]); initUI(); if (window.Camp) Camp.init(); connect(); }).catch(e => { $('#conn').textContent = 'Failed to load data: ' + e; });
 
-function show(screen) { for (const s of ['lobby', 'camp', 'deck', 'game']) $('#' + s).classList.toggle('hidden', s !== screen); $('#btnMenu').classList.toggle('hidden', screen !== 'game'); $('#btnRestart').classList.toggle('hidden', screen !== 'game'); }
+function show(screen) { if (screen === 'deck' && window.Camp && Camp.lobbyPanel) { try { Camp.lobbyPanel($('#lobbyOwn')); } catch (e) { } } for (const s of ['lobby', 'camp', 'deck', 'game']) $('#' + s).classList.toggle('hidden', s !== screen); $('#btnMenu').classList.toggle('hidden', screen !== 'game'); $('#btnRestart').classList.toggle('hidden', screen !== 'game'); }
 function saveDeck() { try { localStorage.setItem('duel_deck', JSON.stringify(deck)); localStorage.setItem('duel_name', $('#name').value); } catch (e) { } }
 
 function connect() {
@@ -109,6 +109,7 @@ function initUI() {
   $('#clrTeam').onclick = () => { deck.figs = []; deck.plates = []; renderDeck(); };
   $('#btnBot').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'bot', name: $('#name').value, deck }); };
   $('#goQuick').onclick = () => { show('deck'); if (deck.figs.length === 6) $('#btnQuick').click(); else toast('Build a team of 6 first, then press Quick match.'); };
+  $('#btnRandQ').onclick = () => { window.pvpMode = false; send({ t: 'quick', random: true, name: $('#name').value }); };
   $('#btnQuick').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', name: $('#name').value, deck }); };
   $('#btnCancelQ').onclick = () => { send({ t: 'cancelq' }); $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); };
   $('#btnCreate').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'create', name: $('#name').value, deck }); };

@@ -8,7 +8,7 @@
 </head>
 <body>
 <header id="top">
-  <div class="brand"><span class="ball"></span> POKÉMON DUEL <small>web · build v10.37</small></div>
+  <div class="brand"><span class="ball"></span> POKÉMON DUEL <small>web · build v10.45</small></div>
   <div id="topinfo"></div>
   <div class="spacer"></div>
   <button id="btnSnd" class="ghost" title="Sound on/off (M)">🔊</button>
@@ -38,6 +38,7 @@
 <main id="camp" class="screen hidden"></main>
 
 <main id="deck" class="screen hidden">
+  <div id="lobbyOwn" class="lobbyOwn"></div>
   <div class="deckgrid">
     <section class="panel">
       <div class="filters">
@@ -55,7 +56,7 @@
       <div id="plateList" class="plates"></div>
       <div id="deckErr" class="err"></div>
       <h3>Play</h3>
-      <div class="row gap"><button id="btnQuick" class="primary">⚡ Quick match</button><button id="btnBot" class="primary">Play vs bot</button><button id="btnCreate" class="primary">Create room</button></div>
+      <div class="row gap"><button id="btnQuick" class="primary">⚡ Quick match</button><button id="btnRandQ" class="primary" title="Both players get random teams from the whole roster">🎲 Random-deck match</button><button id="btnBot" class="primary">Play vs bot</button><button id="btnCreate" class="primary">Create room</button></div>
       <div class="row gap"><input id="joinCode" placeholder="ROOM CODE" maxlength="4" style="text-transform:uppercase;width:110px"><button id="btnJoin">Join room</button></div>
       <div id="waitMsg" class="notice hidden"></div>
       <button id="btnCancelQ" class="hidden">Cancel search</button>

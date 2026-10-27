@@ -6,10 +6,11 @@
   const RNAME = { C: 'Common', UC: 'Uncommon', R: 'Rare', EX: 'Ex', UX: 'Ultra' };
   const SELL = { C: 100, UC: 180, R: 720, EX: 1600, UX: 2000 };
   const CHESTS = [
-    { id: 'bronze', name: 'Bronze Chest', price: 300, icon: '📦', col: '#b87333', odds: { C: 55, UC: 35, R: 9, EX: 1, UX: 0 } },
-    { id: 'silver', name: 'Silver Chest', price: 1000, icon: '🎁', col: '#c0c8d8', odds: { C: 10, UC: 45, R: 38, EX: 6, UX: 1 } },
-    { id: 'gold', name: 'Gold Chest', price: 2500, icon: '🧰', col: '#ffcb05', odds: { C: 0, UC: 15, R: 50, EX: 28, UX: 7 } },
-    { id: 'mythic', name: 'Mythic Chest', price: 5000, icon: '💎', col: '#c58cf2', odds: { C: 0, UC: 0, R: 30, EX: 45, UX: 25 } },
+    { id: 'bronze', name: 'Bronze Chest', price: 1000, icon: '📦', col: '#b87333', odds: { C: 100, UC: 0, R: 0, EX: 0, UX: 0 } },
+    { id: 'silver', name: 'Silver Chest', price: 5000, esc: 0.1, icon: '🎁', col: '#c0c8d8', odds: { C: 70, UC: 30, R: 0, EX: 0, UX: 0 } },
+    { id: 'gold', name: 'Gold Chest', price: 10000, esc: 0.15, icon: '🧰', col: '#ffcb05', odds: { C: 50, UC: 30, R: 20, EX: 0, UX: 0 } },
+    { id: 'mythic', name: 'Mythic Chest', price: 25000, esc: 0.2, icon: '💎', col: '#c58cf2', odds: { C: 0, UC: 10, R: 45, EX: 35, UX: 10 } },
+    { id: 'vault', name: 'Vault Chest', price: 50000, esc: 0.1, icon: '🏦', col: '#ff6b9d', odds: { C: 0, UC: 0, R: 0, EX: 55, UX: 45 }, platePct: 0.6 },
   ];
   // ---- stages generated from CAMP_CHAPTERS (public/campaign_story.js)
   const rarFor = p => p < 0.08 ? ['C'] : p < 0.2 ? ['C', 'UC'] : p < 0.32 ? ['UC'] : p < 0.45 ? ['UC', 'R'] : p < 0.58 ? ['R'] : p < 0.7 ? ['R', 'EX'] : p < 0.82 ? ['EX'] : p < 0.92 ? ['EX', 'UX'] : ['UX'];
@@ -311,14 +312,14 @@
   function tShop(body) {
     if (!S.stock || !S.stockAt || Date.now() - S.stockAt > STOCK_MS) { S.stock = makeStock(); S.stockAt = Date.now(); S.restocks = 0; save(); }
     const leftMs = Math.max(0, S.stockAt + STOCK_MS - Date.now()), rc = restockCost();
-    body.append(gemShop());
+    body.append(gemShop(), mergeBox());
     const chests = el('div', { class: 'chests' });
     const t = tierIdx();
     CHESTS.forEach(c => {
       const odds = {}; RAR.forEach(r => (odds[r] = 0)); RAR.forEach((r, i) => (odds[RAR[Math.min(i, t)]] += c.odds[r]));
       chests.append(el('div', { class: 'chest', style: '--cc:' + c.col }, el('div', { class: 'cicon' }, c.icon), el('b', {}, c.name),
         el('div', { class: 'small muted' }, RAR.filter(r => odds[r] > 0).map(r => `${r} ${odds[r]}%`).join(' · ')),
-        el('button', { class: 'primary', disabled: S.coins >= c.price ? null : '', onclick: () => openChest(c) }, `Open · 🪙${c.price}`), (S.free[c.id] > 0) ? el('button', { class: 'buy', onclick: () => openChest(c, true) }, `Open FREE ×${S.free[c.id]}`) : ''));
+        el('button', { class: 'primary', disabled: S.coins >= priceOf(c) ? null : '', onclick: () => openChest(c) }, `Open · 🪙${priceOf(c)}` + (c.esc && priceOf(c) > c.price ? ' ▲' : '')), (S.free[c.id] > 0) ? el('button', { class: 'buy', onclick: () => openChest(c, true) }, `Open FREE ×${S.free[c.id]}`) : ''));
     });
     chests.querySelectorAll('button').forEach(b => { if (b.getAttribute('disabled') === null) b.removeAttribute('disabled'); });
     const st = el('div', { class: 'figgrid' });
@@ -343,6 +344,27 @@
     ids.forEach(id => { const f = fig(id); row.append(el('button', { class: 'cfig', style: 'border-color:' + RCOL[f.rarity] + ';width:120px;cursor:pointer', onclick: () => { S.owned[id] = (S.owned[id] || 0) + 1; S.pickOffer = null; S.stats.chests++; save(); ov.remove(); render(); } }, img(f), el('div', { class: 'nm' }, f.name), el('div', { class: 'small', style: 'color:' + RCOL[f.rarity] }, RNAME[f.rarity] + (S.owned[id] ? ' · own ×' + S.owned[id] : ' · NEW')))); });
     box.append(row, el('button', { class: 'ghost', style: 'margin-top:10px', onclick: () => { ov.remove(); render(); } }, 'Decide later (offer is saved)')); ov.append(box); document.body.append(ov);
   }
+  const MERGE = [5, 5, 6, 8]; // copies of rarity i needed for one of rarity i+1
+  const deckUse = id => Math.max(0, ...S.decks.map(d => d.figs.filter(x => x === id).length));
+  const spareOf = id => Math.max(0, (S.owned[id] || 0) - Math.max(1, deckUse(id)));
+  const spares = ri => Object.keys(S.owned).filter(id => fig(id) && fig(id).rarity === RAR[ri]).map(id => [id, spareOf(id)]).filter(x => x[1] > 0);
+  function doMerge(ri) {
+    const need = MERGE[ri]; let pool = spares(ri); if (pool.reduce((a, x) => a + x[1], 0) < need || ri + 1 > tierIdx()) return;
+    pool.sort((a, b) => b[1] - a[1]); let left = need; for (const [id, n] of pool) { const take = Math.min(n, left); S.owned[id] -= take; left -= take; if (!left) break; }
+    const all = DATA.figures.filter(f => f.rarity === RAR[ri + 1]); const fresh = all.filter(f => !S.owned[f.id]); 
+    const list = (fresh.length && Math.random() < 0.5) ? fresh : all; const g = list[(Math.random() * list.length) | 0]; const dup = !!S.owned[g.id]; S.owned[g.id] = (S.owned[g.id] || 0) + 1; S.stats.merges = (S.stats.merges || 0) + 1; save();
+    const ov = el('div', { class: 'overlay chestov' }); const box = el('div', { class: 'chestbox', style: '--cc:' + RCOL[g.rarity] }, el('div', { class: 'muted' }, `Merged ${need} ${RAR[ri]} → 1 ${RAR[ri + 1]}`),
+      el('div', { class: 'reveal', style: '--rc:' + RCOL[g.rarity] }, el('div', { class: 'rglow' }), img(g), el('div', { class: 'rname' }, g.name), el('div', { class: 'rrar', style: 'color:' + RCOL[g.rarity] }, RNAME[g.rarity] + (dup ? ' · duplicate (×' + S.owned[g.id] + ')' : ' · NEW!'))),
+      el('button', { class: 'primary', onclick: () => { ov.remove(); render(); } }, 'Awesome')); ov.append(box); document.body.append(ov);
+  }
+  function mergeBox() {
+    const t = tierIdx(); const box = el('div', { class: 'panel gemshop' }, el('h3', {}, '⚗ Merge'), el('div', { class: 'small muted' }, 'Combine spare duplicates into one random Pokémon of the next rarity. Copies used in your decks and your last copy of each are never taken. Free.'));
+    const row = el('div', { class: 'chests' });
+    MERGE.forEach((need, ri) => { const have = spares(ri).reduce((a, x) => a + x[1], 0); const locked = ri + 1 > t; const can = !locked && have >= need;
+      row.append(el('div', { class: 'chest', style: '--cc:' + RCOL[RAR[ri + 1]] }, el('b', {}, `${need} × ${RAR[ri]} → 1 ${RAR[ri + 1]}`), el('div', { class: 'small muted' }, locked ? '🔒 Unlocks with shop tier ' + RNAME[RAR[ri + 1]] : `Spare ${RAR[ri]}: ${have}`),
+        el('button', { class: 'primary', ...(can ? {} : { disabled: '' }), onclick: () => doMerge(ri) }, 'Merge'))); });
+    box.append(row); return box;
+  }
   function gemShop() {
     const box = el('div', { class: 'panel gemshop' }, el('h3', {}, '💎 Gem Shop'), el('div', { class: 'small muted' }, 'Gems come from first clears, Tower checkpoints, Daily Challenges and quests. Nothing here can be bought with coins.'));
     const g = el('div', { class: 'chests' });
@@ -356,8 +378,10 @@
       el('button', { class: 'primary', ...(has || S.gems >= 35 ? {} : { disabled: '' }), onclick: () => { if (!has) { if (S.gems < 35) return; const ids = []; let guard = 0; while (ids.length < 3 && guard++ < 60) { const f = rollFig({ R: 62, EX: 30, UX: 8 }, null, true); if (!ids.includes(f.id)) ids.push(f.id); } S.gems -= 35; S.pickOffer = ids; save(); } pickOffer(S.pickOffer); } }, has ? 'Choose now' : 'Offer · 💎35')));
     box.append(g); return box;
   }
+  const DAY = 24 * 3600e3;
+  const priceOf = c => { if (!c.esc) return c.price; const b = (S.buys || {})[c.id]; const n = b && Date.now() - b.at < DAY ? b.n : 0; return Math.round(c.price * (1 + c.esc * n) / 10) * 10; };
   function openChest(c, free) {
-    if (free) { if (!(S.free[c.id] > 0)) return; S.free[c.id]--; } else if (c.gem) { if (S.gems < c.gem) return; S.gems -= c.gem; } else { if (S.coins < c.price) return; S.coins -= c.price; } S.stats.chests++; const platePl = Math.random() < (c.platePct != null ? c.platePct : c.id === 'gold' ? 0.4 : c.id === 'silver' ? 0.25 : 0.12) ? plateDrop([], 'chest') : null; const f = rollFig(c.odds, null, !!c.gem); const dup = !!S.owned[f.id]; S.owned[f.id] = (S.owned[f.id] || 0) + 1; save();
+    if (free) { if (!(S.free[c.id] > 0)) return; S.free[c.id]--; } else if (c.gem) { if (S.gems < c.gem) return; S.gems -= c.gem; } else { const pr = priceOf(c); if (S.coins < pr) return; S.coins -= pr; if (c.esc) { S.buys = S.buys || {}; const b = S.buys[c.id]; S.buys[c.id] = { n: (b && Date.now() - b.at < DAY ? b.n : 0) + 1, at: Date.now() }; } } S.stats.chests++; const platePl = Math.random() < (c.platePct != null ? c.platePct : c.id === 'gold' ? 0.4 : c.id === 'silver' ? 0.25 : 0.12) ? plateDrop([], 'chest') : null; const f = rollFig(c.odds, null, !!c.gem); const dup = !!S.owned[f.id]; S.owned[f.id] = (S.owned[f.id] || 0) + 1; save();
     const ov = el('div', { class: 'overlay chestov' }); const box = el('div', { class: 'chestbox', style: '--cc:' + c.col }, el('div', { class: 'bigchest shake' }, c.icon), el('div', { class: 'muted' }, 'Opening…'));
     ov.append(box); document.body.append(ov);
     setTimeout(() => {
@@ -430,13 +454,31 @@
     window.campFight = null; done = false; show('camp'); render();
   }
 
+  async function lobbyPanel(host) {
+    host.innerHTML = ''; if (!auth) { host.append(el('div', { class: 'panel mini small muted' }, '🔐 Sign in via Campaign to play PvP with your own collection (decks you built from cards you own).')); return; }
+    const box = el('div', { class: 'panel mini' }, el('b', {}, '🎒 Play PvP with my collection'), el('div', { class: 'small muted' }, 'Loading your decks…')); host.append(box);
+    const r = await api('/api/save'); if (!r.save) { box.lastChild.textContent = r.status === 401 ? 'Session expired – sign in again from Campaign.' : 'No campaign collection yet – start the Campaign first.'; return; }
+    const sv2 = r.save, own = sv2.owned || {}, pls = sv2.plates || {};
+    const ok = d => d && d.figs && d.figs.length === 6 && (() => { const need = {}; d.figs.forEach(i => (need[i] = (need[i] || 0) + 1)); return Object.keys(need).every(i => (own[i] || 0) >= need[i]); })() && new Set(d.plates || []).size === (d.plates || []).length && (d.plates || []).every(k => pls[k]);
+    const decks = (sv2.decks || []).map((d, i) => ({ d, i })).filter(x => ok(x.d));
+    if (!decks.length) { box.lastChild.textContent = 'You have no complete 6-Pokémon deck yet – build one in Campaign → Decks.'; return; }
+    const sel = el('select', {}, ...decks.map(x => el('option', { value: x.i }, x.d.name + ' (' + x.d.figs.map(i => (fig(i) || { name: '?' }).name).join(', ') + ')'))); sel.value = String(decks.find(x => x.i === sv2.active) ? sv2.active : decks[0].i);
+    const code = el('input', { placeholder: 'ROOM CODE', maxlength: 4, style: 'text-transform:uppercase;width:140px' });
+    const note = el('div', { class: 'notice hidden lobbyNote' });
+    const go = t => { const d = sv2.decks[+sel.value]; const nm = auth.name; window.pvpMode = true; window.pvpLast = { auth: auth.token, deck: { figs: d.figs.slice(), plates: (d.plates || []).slice() } }; note.classList.add('hidden'); send({ t, owned: true, auth: auth.token, name: nm, code: code.value, deck: window.pvpLast.deck }); };
+    const cancel = el('button', { class: 'ghost', onclick: () => { send({ t: 'cancelq' }); note.classList.add('hidden'); } }, 'Cancel search');
+    box.lastChild.replaceWith(el('div', { class: 'small muted' }, 'Uses only cards you own; counts on the PvP ladder (bot fill-ins do not). Quick match pairs with another signed-in player.'));
+    box.append(sel, el('div', { class: 'row gap', style: 'margin-top:6px' }, el('button', { class: 'primary', onclick: () => go('quick') }, '⚡ Quick match'), el('button', { class: 'primary', onclick: () => go('create') }, 'Create room'), el('button', { class: 'primary', title: 'Random teams for both players – not limited to your collection, not on the ladder', onclick: () => { window.pvpMode = false; note.classList.add('hidden'); send({ t: 'quick', random: true, name: auth.name }); } }, '🎲 Random-deck match')),
+      el('div', { class: 'row gap', style: 'margin-top:6px' }, code, el('button', { onclick: () => go('join') }, 'Join room'), cancel), note);
+  }
   window.Camp = {
+    lobbyPanel,
     init() { const b = $c('goCamp'); if (b) b.onclick = () => window.Camp.open(); },
     open() { S = null; window.campFight = null; done = false; show('camp'); start(); },
     signOut() { flush(); clearTimeout(saveT); dirty = false; auth = null; S = null; mem = null; try { localStorage.removeItem('duel_auth'); } catch (e) { } loginScreen(); },
     auth: () => auth,
     finish, reset() { done = false; }, bosses: BOSSES,
-    pvpMsg(t, isErr) { const n = document.getElementById('pvpNote'); if (!n) return false; n.classList.remove('hidden'); n.className = 'notice' + (isErr ? ' err' : ''); n.textContent = t; return true; },
+    pvpMsg(t, isErr) { const n = [...document.querySelectorAll('#pvpNote, .lobbyNote')].find(x => x.closest('.screen:not(.hidden)')); if (!n) return false; const lob = n.classList.contains('lobbyNote'); n.className = 'notice' + (isErr ? ' err' : '') + (lob ? ' lobbyNote' : ''); n.textContent = t; return true; },
     pvpRematch() { const L = window.pvpLast; if (L) send({ t: 'rematch', auth: L.auth, deck: L.deck }); },
     leaveToCamp() { window.pvpMode = false; window.campFight = null; sessionStorage.removeItem('duel_session'); V = null; window.Camp.open(); },
   };
