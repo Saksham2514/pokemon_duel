@@ -83,7 +83,7 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
   // attack in place
   g = mk(plain.slice(0, 6), plain.slice(6, 12)); const a1 = Object.values(g.figs).find(f => f.owner === 0), d1 = Object.values(g.figs).find(f => f.owner === 1); place(g, a1, 'I00'); place(g, d1, 'I01'); g.cur = 0; g.turn = 3; a1.canActAtTurnStart = true; a1.wait = 0;
   ok(T.reach(g, a1)['I00'], 'adjacent mon may attack in place');
-  const rr = E.apply(g, 0, { t: 'move', uid: a1.uid, to: 'I00' }); ok(!rr.error && rr.battle, 'in-place attack starts a battle: ' + JSON.stringify(rr.error || ''));
+  let rr = E.apply(g, 0, { t: 'move', uid: a1.uid, to: 'I00' }); if (g.phase === 'battleChoice') rr = E.apply(g, 0, { t: 'battle', target: g.pending.targets[0] }); ok(!rr.error && rr.battle, 'in-place attack starts a battle: ' + JSON.stringify(rr.error || ''));
   // Whiteout
   g = mk([nm('Abomasnow'), ...plain.slice(0, 5)], plain.slice(5, 11)); const ab = Object.values(g.figs).find(f => FIGS[f.fid].name === 'Abomasnow'); const fl = LIST.find(f => f.types.includes('flying') && f.mp >= 2 && !f.rules.length); g = mk([nm('Abomasnow'), ...plain.slice(0, 5)], [fl.id, ...plain.slice(6, 11)]);
   const ab2 = Object.values(g.figs).find(f => FIGS[f.fid].name === 'Abomasnow'), fy = Object.values(g.figs).find(f => f.owner === 1 && f.fid === fl.id); place(g, ab2, 'I00'); place(g, fy, 'I01');
@@ -189,7 +189,7 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
 { const g10 = setup(['Pikachu','Bulbasaur','Eevee','Jolteon','Stantler','Popplio'], ['Sharpedo','Tsareena','Garbodor','Ivysaur','Gible','Metang']);
   const A = Object.values(g10.figs).find(f => f.owner === 0), D = Object.values(g10.figs).find(f => f.owner === 1);
   place(g10, A, 'I00'); place(g10, D, 'I01'); A.st = ['confused']; let drifts = 0;
-  for (let i = 0; i < 12; i++) { const n0 = g10.log.length; T.runBattle ? 0 : 0; const r = E.apply(g10, 0, { t: 'move', uid: A.uid, to: A.pos }); drifts += g10.log.filter(x => /drifts from/.test(x.msg)).length > 0 ? 1 : 0; break; }
+  for (let i = 0; i < 12; i++) { const n0 = g10.log.length; T.runBattle ? 0 : 0; let r = E.apply(g10, 0, { t: 'move', uid: A.uid, to: A.pos }); if (g10.phase === 'battleChoice') r = E.apply(g10, 0, { t: 'battle', target: g10.pending.targets[0] }); drifts += g10.log.filter(x => /drifts from/.test(x.msg)).length > 0 ? 1 : 0; break; }
   ok(drifts === 1, 'confused Pokémon log a drifting spin');
 }
 
@@ -300,3 +300,10 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
   ok(T.taskOptions(gf, gf.tasks[gf.tasks.length - 1]).includes(B6.GOALS[0]), 'Fly Away can land on the goal point beside the opponent'); }
 
 console.log(`ability tests: ${pass} passed, ${fail} failed`);
+
+// optional battle: skipping ends the turn without a fight; the battle ends the turn
+{ const g = setup(['Pikachu','Bulbasaur','Eevee','Jolteon','Stantler','Popplio'], ['Sharpedo','Tsareena','Garbodor','Ivysaur','Gible','Metang']);
+  const A = Object.values(g.figs).find(f => f.owner === 0), D = Object.values(g.figs).find(f => f.owner === 1);
+  place(g, A, 'I00'); place(g, D, 'I01'); E.apply(g, 0, { t: 'move', uid: A.uid, to: 'I00' });
+  console.log(g.phase === 'battleChoice' ? 'ok  battle offered' : 'FAIL battle not offered');
+  const r = E.apply(g, 0, { t: 'battle', target: 'skip' }); console.log(!r.error && g.cur === 1 && D.loc === 'field' && A.loc === 'field' ? 'ok  skip ends turn, no fight' : 'FAIL skip: ' + JSON.stringify(r)); }

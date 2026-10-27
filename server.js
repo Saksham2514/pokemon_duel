@@ -3,7 +3,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
 const E = require('./lib/engine'); const { FIGS, LIST } = require('./lib/figures'); const { PLATES } = require('./lib/plates');
 const DB = require('./lib/db');
-const B = require('./lib/board'); const { botDeck, randomDeck, botAct } = require('./lib/bot');
+const B = require('./lib/board'); const { botDeck, randomDeck, botAct, botSearch } = require('./lib/bot');
 
 const PORT = process.env.PORT || 3000;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
@@ -77,7 +77,7 @@ function botMaybe(room) {
   const s = room.seats[g.cur]; if (!s || !s.bot) return;
   setTimeout(() => {
     if (g.over || room.game !== g || g.cur !== room.seats.indexOf(s)) return;
-    const a = botAct(g, g.cur, Math.random, s.skill); if (!a) return;
+    let a; try { a = botSearch(g, g.cur, Math.random, s.skill, 120 + 200 * (s.skill || 0)); } catch (e) { a = botAct(g, g.cur, Math.random, s.skill); } if (!a) return;
     const r = doAct(room, g.cur, a); if (r && r.error) { /* fall back to first legal move */ const L = E.legal(g); const uid = Object.keys(L.moves)[0]; if (uid) doAct(room, g.cur, { t: 'move', uid: +uid, to: L.moves[uid][0] }); }
   }, 900);
 }
@@ -108,13 +108,29 @@ wss.on('connection', ws => {
     let m; try { m = JSON.parse(raw); } catch { return; }
     const c = ws.ctx;
     const mkSeat = (name, deck, bot, skill) => ({ ws: bot ? null : ws, name: String(name || 'Trainer').slice(0, 24), deck, bot: !!bot, skill: skill == null ? 0.4 : skill, token: Math.random().toString(36).slice(2) });
+    if (m.t === 'quick') {
+      const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });
+      const name = String(m.name || 'Trainer').slice(0, 24);
+      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws) { q = r; break; }
+      if (q) { clearTimeout(q.qTimer); q.open = false; q.seats[1] = mkSeat(name, m.deck); c.room = q; c.seat = 1; send(ws, { t: 'room', code: q.code, seat: 1, token: q.seats[1].token }); startGame(q); return; }
+      const code = rid(); const room = { code, seats: [mkSeat(name, m.deck), null], game: null, open: true }; rooms.set(code, room); c.room = room; c.seat = 0;
+      send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token }); send(ws, { t: 'waiting', code, quick: true });
+      room.qTimer = setTimeout(() => {
+        if (!room.open || room.seats[1] || room.game) return; room.open = false;
+        const pool = ['Ace Trainer Kai', 'Ranger Mira', 'Youngster Joey', 'Lass Hana', 'Hiker Boulder', 'Swimmer Tide', 'Scientist Rowan', 'Cooltrainer Sage'];
+        room.seats[1] = mkSeat(pool[(Math.random() * pool.length) | 0], randomDeck(Math.random), true, 0.85);
+        startGame(room);
+      }, 7000);
+      return;
+    }
+    if (m.t === 'cancelq') { const r = c.room; if (r && r.open && !r.game) { clearTimeout(r.qTimer); r.open = false; rooms.delete(r.code); c.room = null; } return; }
     if (m.t === 'create' || m.t === 'bot') {
       const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });
       let own = null; if (m.owned && m.t === 'create') { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
       const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : m.name, m.deck), null], game: null }; if (own) { room.owned = true; room.seats[0].user = own.user; }
       rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token, bot: m.t === 'bot' });
-      if (m.t === 'bot') { const cu = DB.who(m.auth); room.campUser = cu && m.boss ? cu : null; room.campDone = false; room.campStage = String((m.boss && m.boss.stage) || ''); room.campFee = Math.max(0, Math.min(5000, +(m.boss && m.boss.fee) || 0)); if (room.campUser) { try { DB.setResult(room.campUser, { win: false, stage: room.campStage, fee: room.campFee, pending: true }); } catch (e) { } } const bs = m.boss && m.boss.deck && !E.validateDeck(m.boss.deck) ? m.boss : null; room.boss = bs ? { deck: bs.deck, skill: Math.max(0, Math.min(1, +bs.skill || 0)), name: String(bs.name || 'Boss') } : null; room.seats[1] = room.boss ? mkSeat(room.boss.name, room.boss.deck, true, room.boss.skill) : mkSeat('Rival Bot', randomDeck(Math.random), true); if (Math.random() < 0.5) { room.seats.reverse(); room.seats.forEach((s, i) => { if (!s.bot) { c.seat = i; send(ws, { t: 'room', code, seat: i, token: s.token, bot: true }); } }); } startGame(room); }
+      if (m.t === 'bot') { const cu = DB.who(m.auth); room.campUser = cu && m.boss ? cu : null; room.campDone = false; room.campStage = String((m.boss && m.boss.stage) || ''); room.campFee = Math.max(0, Math.min(5000, +(m.boss && m.boss.fee) || 0)); if (room.campUser) { try { DB.setResult(room.campUser, { win: false, stage: room.campStage, fee: room.campFee, pending: true }); } catch (e) { } } const bs = m.boss && m.boss.deck && !E.validateDeck(m.boss.deck) ? m.boss : null; room.boss = bs ? { deck: bs.deck, skill: Math.max(0, Math.min(1, +bs.skill || 0)), name: String(bs.name || 'Boss') } : null; room.seats[1] = room.boss ? mkSeat(room.boss.name, room.boss.deck, true, room.boss.skill) : mkSeat('Rival Bot', randomDeck(Math.random), true, 0.85); if (Math.random() < 0.5) { room.seats.reverse(); room.seats.forEach((s, i) => { if (!s.bot) { c.seat = i; send(ws, { t: 'room', code, seat: i, token: s.token, bot: true }); } }); } startGame(room); }
       else send(ws, { t: 'waiting', code });
     } else if (m.t === 'join') {
       const room = rooms.get(String(m.code || '').toUpperCase()); if (!room) return send(ws, { t: 'err', msg: 'Room not found.' });

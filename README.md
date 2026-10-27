@@ -103,3 +103,25 @@ v10.10: Gold now beats Purple (priority), as the rules text says; a bug made Pur
 2. Copy its URL (`libsql://your-db-name-yourname.turso.io`) and create a token (Database → Generate Token, read & write).
 3. In Render → your web service → Environment add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN`. Build command `npm install`, start command `node server.js`.
 4. Redeploy. Open `/api/health` — it should say `"remote":true`. Accounts now survive sleeps and redeploys.
+
+## v10.26 — smarter bot
+Bots with skill ≥ 0.3 now run a short lookahead search: the heuristic ranks moves, the top few are simulated on cloned games (fast rollouts, ~0.1–0.3 s per move) and the move with the best win rate wins. Practice "Rival Bot" now uses skill 0.85; campaign bosses scale search strength with their skill.
+
+## v10.27 — Quick match
+Lobby has a ⚡ Quick match button: it pairs you with another searching player, or after 7 s fills the seat with a bot that uses an ordinary trainer name.
+
+## v10.28 — arcade skin + attack-then-move
+- New look: marble board, glowing white lines and goals, blue/red bases with MP badges, blue/red top band with turn counter, gold buttons.
+- (The attack-then-move rule briefly added here was removed in v10.29.)
+
+## v10.29 — original battle flow
+Moving next to an enemy now offers **Battle / Don't battle** (a Pokémon may also stay in place and battle an adjacent enemy). Any battle ends the turn, as in the original game. Bots may decline bad fights.
+
+## v10.30 — layout polish
+Bottom "dock" (turn banner, plates, Z gauge, Forfeit / Info buttons) styled like the mobile game; on desktop it sits beside the board, on phones it sticks to the bottom. Info/Log/Chat moved into a collapsible drawer (closed by default on phones). Wheels now print move names. Board canvas widened so edge pieces are no longer clipped.
+
+## v10.31 — battle screen redo
+Split blue/red battle scene, big wheels with black rim + glowing team ring, sunburst rays on white segments, curved move names, radial damage numbers, banners with name + Z gauge %. Phone layout stacks the two halves.
+
+## v10.32 — table-top look
+Wood-room backdrop, slightly tilted board, wooden turn plate, dark-blue bottom buttons (from the original board screen).

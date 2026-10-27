@@ -81,8 +81,9 @@ function drain() {
 function onMsg(m) {
   if (m.t === 'room') { session = { code: m.code, seat: m.seat, token: m.token, bot: !!m.bot }; try { sessionStorage.setItem('duel_session', JSON.stringify(session)); } catch (e) { } }
   else if (m.t === 'waiting' && window.pvpMode) { Camp.pvpMsg('Room code: ' + m.code + ' — tell your opponent to open Campaign → PvP and join this code. Waiting for them…'); }
+  else if (m.t === 'waiting' && m.quick) { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Searching for an opponent…'; $('#btnCancelQ').classList.remove('hidden'); }
   else if (m.t === 'waiting') { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Room code: ' + m.code + ' — share it with your opponent. Waiting for them to join…'; }
-  else if (m.t === 'start') { lastPlateN = null; lastPos = {}; activeAnim = {}; ghosts = []; stateQ = []; animating = false; seenBadges = {}; badgeStart = {}; endShown = false; if (window.Camp) Camp.reset(); show('game'); ui = { sel: null, info: null, plate: null, z: '' }; $('#chat').innerHTML = ''; $('#endOverlay').classList.add('hidden'); }
+  else if (m.t === 'start') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); lastPlateN = null; lastPos = {}; activeAnim = {}; ghosts = []; stateQ = []; animating = false; seenBadges = {}; badgeStart = {}; endShown = false; if (window.Camp) Camp.reset(); show('game'); ui = { sel: null, info: null, plate: null, z: '' }; $('#chat').innerHTML = ''; $('#endOverlay').classList.add('hidden'); }
   else if (m.t === 'state') { stateQ.push(m); drain(); }
   else if (m.t === 'err') { if (window.pvpMode && Camp.pvpMsg(m.msg, true)) return; toast(m.msg); if (m.fatal) { sessionStorage.removeItem('duel_session'); } $('#deckErr').textContent = m.msg; }
   else if (m.t === 'chat') { const c = $('#chat'); c.append(el('div', {}, el('b', {}, m.from + ': '), m.text)); c.scrollTop = c.scrollHeight; }
@@ -96,11 +97,16 @@ function initUI() {
   $('#btnHelp').onclick = () => $('#helpModal').classList.remove('hidden');
   $('#helpClose').onclick = () => $('#helpModal').classList.add('hidden');
   $('#btnRestart').onclick = () => { { if (window.pvpMode) return Camp.pvpRematch(); const cf = !!window.campFight; if (confirm((session && session.bot ? 'Restart now' : 'Ask your opponent for a rematch') + (cf ? ' of this fight?' : ' with new random teams?'))) send({ t: 'rematch', random: !cf }); } };
+  $('#btnForfeit').onclick = () => $('#btnMenu').click();
+  $('#btnInfoToggle').onclick = () => { const d = $('#drawer'); d.open = !d.open; if (d.open) d.scrollIntoView({ behavior: 'smooth' }); };
+  try { if (window.matchMedia('(max-width:900px)').matches) $('#drawer').open = false; } catch (e) { }
   $('#btnMenu').onclick = () => { if (V && !V.over && !confirm('Leave the duel? You will forfeit.')) return; if (V && !V.over) act({ t: 'resign' }); if (window.campFight || window.pvpMode) return Camp.leaveToCamp(); sessionStorage.removeItem('duel_session'); V = null; show('deck'); renderDeck(); };
   for (const id of ['fSearch', 'fRarity', 'fMp']) $('#' + id).oninput = renderGrid;
   $('#rndTeam').onclick = () => { const L = DATA.figures; deck.figs = []; const nm = {}; while (deck.figs.length < 6) { const f = L[(Math.random() * L.length) | 0]; const b = f.name.split(' ').pop(); if ((nm[b] || 0) >= 2) continue; nm[b] = (nm[b] || 0) + 1; deck.figs.push(f.id); } deck.plates = []; for (const k of Object.keys(PL).sort(() => Math.random() - 0.5)) if (cost() + PL[k].cost <= 6) deck.plates.push(k); renderDeck(); };
   $('#clrTeam').onclick = () => { deck.figs = []; deck.plates = []; renderDeck(); };
   $('#btnBot').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'bot', name: $('#name').value, deck }); };
+  $('#btnQuick').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', name: $('#name').value, deck }); };
+  $('#btnCancelQ').onclick = () => { send({ t: 'cancelq' }); $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); };
   $('#btnCreate').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'create', name: $('#name').value, deck }); };
   $('#btnJoin').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'join', code: $('#joinCode').value, name: $('#name').value, deck }); };
   $('#chatSend').onclick = sendChat; $('#chatIn').onkeydown = e => { if (e.key === 'Enter') sendChat(); };
@@ -118,7 +124,7 @@ function renderDeck() {
   const pl = $('#plateList'); pl.innerHTML = '';
   for (const k of Object.keys(PL)) { const Pp = PL[k]; const on = deck.plates.includes(k); pl.append(el('div', { class: 'plate' + (on ? ' on' : ''), onclick: () => { if (on) deck.plates = deck.plates.filter(x => x !== k); else if (cost() + Pp.cost <= 6) deck.plates.push(k); renderDeck(); } }, el('span', { class: 'dot', style: 'background:' + (COL[Pp.color] || '#f78fb3') }), el('div', {}, `${Pp.name} (${Pp.cost})`, el('small', {}, Pp.text)))); }
   $('#plateCost').textContent = `(${cost()}/6)`;
-  const ok = deck.figs.length === 6; $('#btnBot').disabled = $('#btnCreate').disabled = $('#btnJoin').disabled = !ok;
+  const ok = deck.figs.length === 6; $('#btnQuick').disabled = $('#btnBot').disabled = $('#btnCreate').disabled = $('#btnJoin').disabled = !ok;
   $('#deckErr').textContent = ok ? '' : 'Pick 6 Pokémon to play.'; saveDeck(); updateSummary();
 }
 function renderGrid() {
@@ -222,12 +228,18 @@ function render() {
   if (V.over) { b.className = 'banner'; b.textContent = 'Game over — ' + V.reason; }
   else if (ch) { b.className = 'banner mine'; b.textContent = ch.kind === 'evade' ? 'Surprise Back! Click a glowing point to retreat without battling, or fight normally.' : ch.kind === 'pickFx' ? 'Choose a glowing Pokémon for this effect, or Skip.' : ['pickOther', 'pickSwap'].includes(ch.kind) ? 'Choose which Pokémon to move (glowing).' : 'Choose a destination for ' + FIG[V.figs.find(f => f.uid === ch.uid).fid].name + '.'; }
   else if (V.phase === 'choose') { b.className = 'banner theirs'; b.textContent = 'Opponent is choosing a position…'; }
-  else if (V.phase === 'battleChoice' && mine) { b.className = 'banner mine'; b.textContent = 'Choose which adjacent enemy to battle.'; }
+  else if (V.phase === 'battleChoice' && mine) { b.className = 'banner mine'; b.textContent = 'Click the enemy to battle it — or choose not to battle.'; }
   else { b.className = 'banner ' + (mine ? 'mine' : 'theirs'); b.textContent = (mine ? 'Your turn' : V.players[V.cur].name + "'s turn") + ' · turn ' + V.turn; }
   $('#topinfo').textContent = session ? 'Room ' + session.code : '';
+  drawHud(me, opp);
   drawBoard(); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null);
   const L = $('#log'); L.innerHTML = ''; V.log.forEach(e => L.append(el('div', {}, e.msg))); L.scrollTop = L.scrollHeight;
   if (V.over) showEnd();
+}
+function drawHud(me, opp) {
+  let h = $('#hud'); if (!h) { h = el('div', { id: 'hud' }); $('.boardwrap').prepend(h); }
+  const side = (i, cls) => { const p = V.players[i]; return el('div', { class: 'hs ' + cls + (V.cur === i && !V.over ? ' on' : '') }, el('div', { class: 'hn' }, p.name + (i === me ? ' (you)' : '')), el('div', { class: 'hc' }, p.clock == null ? '–' : fmt(p.clock))); };
+  h.replaceChildren(side(me, 'me'), el('div', { class: 'hturn' }, el('small', {}, 'TURN'), el('b', {}, String(V.turn))), side(opp, 'opp'));
 }
 function dests() { if (!V.legal || ui.sel == null) return []; return V.legal.moves[ui.sel] || []; }
 function plateTargetUids() { if (V.legal && V.legal.choose && ['pickOther', 'pickSwap', 'pickFx'].includes(V.legal.choose.kind)) return V.legal.choose.options; if (!ui.plate || !V.players[V.seat].ownPlates) return []; const T = V.players[V.seat].ownPlates[ui.plate.idx].targets; if (!T) return []; return ui.plate.step === 'a' ? T.a : (T.b || []); }
@@ -238,18 +250,29 @@ function koFlash(text) { const bw = document.querySelector('.boardwrap'); if (!b
 function drawBoard() {
   planAnims();
   const svg = $('#board'); svg.innerHTML = ''; const defs = sv('defs'); svg.append(defs);
+  defs.append(sv('filter', { id: 'marble', x: '0', y: '0', width: '100%', height: '100%' }, sv('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.012 0.02', numOctaves: 4, seed: 7, result: 'n' }), sv('feColorMatrix', { in: 'n', type: 'matrix', values: '0 0 0 0 0.62  0 0 0 0 0.66  0 0 0 0 0.72  0.9 0.9 0.9 0 -0.55' })),
+    sv('filter', { id: 'glow', filterUnits: 'userSpaceOnUse', x: -50, y: -20, width: 760, height: 715 }, sv('feGaussianBlur', { stdDeviation: 3, result: 'b' }), sv('feMerge', {}, sv('feMergeNode', { in: 'b' }), sv('feMergeNode', { in: 'SourceGraphic' }))),
+    sv('radialGradient', { id: 'vig', cx: '50%', cy: '50%', r: '75%' }, sv('stop', { offset: '0.6', 'stop-color': '#000', 'stop-opacity': 0 }), sv('stop', { offset: '1', 'stop-color': '#1a2a4a', 'stop-opacity': 0.35 })),
+    sv('radialGradient', { id: 'gOrange' }, sv('stop', { offset: '0', 'stop-color': '#ffd27a' }), sv('stop', { offset: '0.55', 'stop-color': '#ff9a2e' }), sv('stop', { offset: '1', 'stop-color': '#ff7a0000' })),
+    sv('radialGradient', { id: 'gBlue' }, sv('stop', { offset: '0', 'stop-color': '#bfe4ff' }), sv('stop', { offset: '0.55', 'stop-color': '#3d9bff' }), sv('stop', { offset: '1', 'stop-color': '#2a6cff00' })));
+  svg.append(sv('rect', { x: -30, y: 0, width: 720, height: 675, fill: '#c9ced6' }), sv('rect', { x: -30, y: 0, width: 720, height: 675, filter: 'url(#marble)', opacity: 0.9 }),
+    sv('rect', { x: -30, y: 0, width: 720, height: 675, fill: 'url(#vig)' }),
+    sv('line', { x1: -16, y1: 30, x2: 676, y2: 30, stroke: '#f2b705', 'stroke-width': 5, 'stroke-linecap': 'round', filter: 'url(#glow)' }), sv('line', { x1: -16, y1: 640, x2: 676, y2: 640, stroke: '#f2b705', 'stroke-width': 5, 'stroke-linecap': 'round', filter: 'url(#glow)' }));
   const seen = new Set();
-  for (const a in BOARD.adj) for (const b of BOARD.adj[a]) { const k = [a, b].sort().join('|'); if (seen.has(k)) continue; seen.add(k); const A = PT(a), Bp = PT(b); svg.append(sv('line', { x1: A.x, y1: A.y, x2: Bp.x, y2: Bp.y, stroke: '#3a4e7e', 'stroke-width': 7, 'stroke-linecap': 'round' })); }
+  for (const a in BOARD.adj) for (const b of BOARD.adj[a]) { const k = [a, b].sort().join('|'); if (seen.has(k)) continue; seen.add(k); const A = PT(a), Bp = PT(b); svg.append(sv('line', { x1: A.x, y1: A.y, x2: Bp.x, y2: Bp.y, stroke: '#ffffff', 'stroke-width': 4.5, 'stroke-linecap': 'round', filter: 'url(#glow)', opacity: 0.95 })); }
   const choose = V.legal && V.legal.choose;
   const D = new Set(choose ? (['pickOther', 'pickSwap', 'pickFx'].includes(choose.kind) ? [] : choose.options) : (V.legal && V.phase === 'main' ? dests() : []));
   const goalMine = BOARD.goals[V.seat];
-  for (const g of ['G0', 'G1']) { const q = PT(g); const isTarget = g === goalMine; svg.append(sv('rect', { x: q.x - 46, y: q.y - 28, width: 92, height: 56, rx: 12, fill: isTarget ? '#4a2020' : '#173a35', stroke: isTarget ? '#ef6b6b' : '#34c38f', 'stroke-width': 3 }), sv('text', { x: q.x, y: q.y + (V.figs.some(f => f.loc === 'field' && f.pos === g) ? 46 : 5), 'text-anchor': 'middle', fill: '#fff', 'font-size': 12, 'font-weight': 700 }, isTarget ? 'ENEMY GOAL' : 'YOUR GOAL')); if (D.has(g)) svg.append(sv('rect', { x: q.x - 46, y: q.y - 28, width: 92, height: 56, rx: 12, fill: '#ffcb0555', stroke: '#ffcb05', 'stroke-width': 4, class: 'dest', style: 'cursor:pointer', onclick: () => doMove(g) })); }
+  for (const g of ['G0', 'G1']) { const q = PT(g); const isTarget = g === goalMine; const gid = isTarget ? 'gOrange' : 'gBlue';
+    svg.append(sv('circle', { cx: q.x, cy: q.y, r: 56, fill: `url(#${gid})`, class: 'goalpulse' }), sv('circle', { cx: q.x, cy: q.y, r: 27, fill: isTarget ? '#ffb347' : '#53a8ff', stroke: '#fff', 'stroke-width': 4, filter: 'url(#glow)' }),
+      sv('path', { d: isTarget ? `M${q.x + 9},${q.y - 13} L${q.x - 12},${q.y} L${q.x + 9},${q.y + 13} Z` : `M${q.x - 9},${q.y - 13} L${q.x + 12},${q.y} L${q.x - 9},${q.y + 13} Z`, fill: '#fff' }),
+      sv('text', { x: q.x, y: q.y + (V.figs.some(f => f.loc === 'field' && f.pos === g) ? 62 : 52), 'text-anchor': 'middle', fill: isTarget ? '#b45f00' : '#1b5fb8', 'font-size': 12, 'font-weight': 800 }, isTarget ? 'ENEMY GOAL' : 'YOUR GOAL')); if (D.has(g)) svg.append(sv('circle', { cx: q.x, cy: q.y, r: 40, fill: '#ffcb0555', stroke: '#ffcb05', 'stroke-width': 5, class: 'dest', style: 'cursor:pointer', onclick: () => doMove(g) })); }
   const entryMine = BOARD.entry[V.seat], entryOpp = BOARD.entry[1 - V.seat];
   const figAt = {}; V.figs.filter(f => f.loc === 'field').forEach(f => (figAt[f.pos] = f));
   for (const p of BOARD.points) {
     const q = PT(p); const isE = entryMine.includes(p), isO = entryOpp.includes(p);
-    svg.append(sv('circle', { cx: q.x, cy: q.y, r: 33, fill: '#1c2a4d', stroke: isE ? '#34c38f' : isO ? '#ef6b6b' : '#40558a', 'stroke-width': isE || isO ? 4 : 2 }));
-    if (isE || isO) svg.append(sv('text', { x: q.x, y: q.y + 52, 'text-anchor': 'middle', fill: isE ? '#34c38f' : '#ef6b6b', 'font-size': 10 }, isE ? 'your entry' : 'enemy entry'));
+    svg.append(sv('circle', { cx: q.x, cy: q.y, r: isE || isO ? 20 : 9, fill: isE || isO ? '#ffffff55' : '#ffffffcc', stroke: '#fff', 'stroke-width': isE || isO ? 4 : 3, filter: 'url(#glow)' }));
+    if (isE || isO) svg.append(sv('circle', { cx: q.x, cy: q.y, r: 11, fill: 'none', stroke: isE ? '#2f7de1' : '#e0453a', 'stroke-width': 3 }), sv('circle', { cx: q.x, cy: q.y, r: 4, fill: isE ? '#2f7de1' : '#e0453a' }));
   }
   const tgSet = new Set(V.legal && V.phase === 'battleChoice' ? V.legal.battle : []); if (choose && ['pickOther', 'pickSwap', 'pickFx'].includes(choose.kind)) choose.options.forEach(u => tgSet.add(u)); else if (choose) tgSet.add(choose.uid);
   const ptg = new Set(plateTargetUids()); const now = performance.now(); const fresh = Object.keys(seenBadges).length > 0;
@@ -257,13 +280,13 @@ function drawBoard() {
     const q = PT(f.pos); const d = FIG[f.fid]; const mineF = f.owner === V.seat; const sel = ui.sel === f.uid;
     const g = sv('g', { style: 'cursor:pointer', onclick: () => clickFig(f), onmouseenter: () => { ui.info = f.fid; infoCard($('#info'), d); if (mineF && V.legal && V.phase === 'main' && !ui.plate && ui.sel !== f.uid) previewDests(f.uid); }, onmouseleave: clearPreview });
     const cid = 'cp' + f.uid; defs.append(sv('clipPath', { id: cid }, sv('circle', { cx: q.x, cy: q.y, r: 29 })));
-    g.append(sv('circle', { cx: q.x, cy: q.y, r: 33, fill: '#0b1226', stroke: mineF ? '#34c38f' : '#ef6b6b', 'stroke-width': sel ? 8 : 4 }));
+    g.append(sv('ellipse', { cx: q.x, cy: q.y + 30, rx: 36, ry: 11, fill: '#0006' }), sv('circle', { cx: q.x, cy: q.y, r: 34, fill: mineF ? '#1e5fd0' : '#c8372d', stroke: sel ? '#ffe45c' : (mineF ? '#7cb8ff' : '#ff9a90'), 'stroke-width': sel ? 7 : 4 }), sv('circle', { cx: q.x, cy: q.y, r: 30, fill: '#10172b' }));
     g.append(sv('text', { x: q.x, y: q.y + 6, 'text-anchor': 'middle', fill: '#8fa0c4', 'font-size': 20 }, d.name[0]));
     const im = sv('image', { href: d.picture, x: q.x - 29, y: q.y - 29, width: 58, height: 58, 'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice' }); im.addEventListener('error', () => im.setAttribute('visibility', 'hidden')); g.append(im);
     if (ui.hi && (ui.hi.a === f.uid || ui.hi.d === f.uid)) g.append(sv('circle', { cx: q.x, cy: q.y, r: 45, fill: 'none', stroke: ui.hi.a === f.uid ? '#ffcb05' : '#ff6b6b', 'stroke-width': 5, class: 'dest' }), sv('text', { x: q.x, y: q.y - 50, 'text-anchor': 'middle', 'font-size': 18 }, ui.hi.a === f.uid ? '⚔' : '🛡'));
     if (tgSet.has(f.uid) || ptg.has(f.uid)) g.append(sv('circle', { cx: q.x, cy: q.y, r: 41, fill: 'none', stroke: '#ffcb05', 'stroke-width': 4, 'stroke-dasharray': '6 4', class: 'dest' }));
-    g.append(sv('rect', { x: q.x - 36, y: q.y + 22, width: 40, height: 16, rx: 6, fill: '#000c' }), sv('text', { x: q.x - 16, y: q.y + 34, 'text-anchor': 'middle', fill: '#fff', 'font-size': 11 }, 'MP' + f.mp));
-    if (f.wait > 0) g.append(sv('rect', { x: q.x + 6, y: q.y + 22, width: 32, height: 16, rx: 6, fill: '#8a5a00' }), sv('text', { x: q.x + 22, y: q.y + 34, 'text-anchor': 'middle', fill: '#fff', 'font-size': 11 }, 'W' + f.wait));
+    g.append(sv('circle', { cx: q.x + 27, cy: q.y + 24, r: 13, fill: mineF ? '#2f7de1' : '#e0453a', stroke: '#fff', 'stroke-width': 2.5 }), sv('text', { x: q.x + 27, y: q.y + 30, 'text-anchor': 'middle', fill: '#fff', 'font-size': 17, 'font-weight': 900 }, String(f.mp)), sv('title', {}, 'MP ' + f.mp));
+    if (f.wait > 0) g.append(sv('rect', { x: q.x - 38, y: q.y + 22, width: 32, height: 16, rx: 6, fill: '#8a5a00' }), sv('text', { x: q.x - 22, y: q.y + 34, 'text-anchor': 'middle', fill: '#fff', 'font-size': 11 }, 'W' + f.wait));
     // condition / marker badges
     const bl = badgeList(f); const had = seenBadges[f.uid] || new Set(); const keys = new Set();
     bl.forEach((bd, k) => {
@@ -280,11 +303,11 @@ function drawBoard() {
   for (const f of V.figs) if (f.loc !== 'field' && !seenBadges[f.uid]) seenBadges[f.uid] = new Set();
   for (const gh of ghosts) {
     const q = PT(gh.pos), d = FIG[gh.fid]; if (!d) continue; const cid = 'gh' + gh.start + gh.pos; defs.append(sv('clipPath', { id: cid }, sv('circle', { cx: q.x, cy: q.y, r: 29 })));
-    const g = sv('g', {}, sv('circle', { cx: q.x, cy: q.y, r: 33, fill: '#0b1226', stroke: gh.owner === V.seat ? '#34c38f' : '#ef6b6b', 'stroke-width': 4 }), sv('text', { x: q.x, y: q.y + 6, 'text-anchor': 'middle', fill: '#8fa0c4', 'font-size': 20 }, d.name[0]), sv('image', { href: d.picture, x: q.x - 29, y: q.y - 29, width: 58, height: 58, 'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice' }));
+    const g = sv('g', {}, sv('circle', { cx: q.x, cy: q.y, r: 34, fill: '#10172b', stroke: gh.owner === V.seat ? '#7cb8ff' : '#ff9a90', 'stroke-width': 4 }), sv('text', { x: q.x, y: q.y + 6, 'text-anchor': 'middle', fill: '#8fa0c4', 'font-size': 20 }, d.name[0]), sv('image', { href: d.picture, x: q.x - 29, y: q.y - 29, width: 58, height: 58, 'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice' }));
     g.style.transformOrigin = `${q.x}px ${q.y}px`; svg.append(g);
     const an = g.animate([{ opacity: 1, transform: 'scale(1) rotate(0deg)' }, { opacity: 0, transform: 'scale(0.3) rotate(25deg)' }], { duration: gh.dur, easing: 'ease-in', fill: 'forwards' }); an.currentTime = performance.now() - gh.start;
   }
-  for (const p of D) { if (p.startsWith('G')) continue; const q = PT(p); svg.append(sv('circle', { cx: q.x, cy: q.y, r: 30, fill: '#ffcb0555', stroke: '#ffcb05', 'stroke-width': 4, class: 'dest', style: 'cursor:pointer', onclick: () => doMove(p) })); }
+  for (const p of D) { if (p.startsWith('G')) continue; const q = PT(p); svg.append(sv('circle', { cx: q.x, cy: q.y, r: 26, fill: '#ffd83a66', stroke: '#ffcb05', 'stroke-width': 5, class: 'dest', filter: 'url(#glow)', style: 'cursor:pointer', onclick: () => doMove(p) })); }
   if (V.lockedGoal[V.seat] > 0 || V.lockedGoal[1 - V.seat] > 0) svg.append(sv('text', { x: 342, y: 655, 'text-anchor': 'middle', fill: '#e9b44c', 'font-size': 13 }, V.lockedGoal[V.seat] > 0 ? '🛡 Your goal is blocked for the opponent this turn' : '🛡 Enemy goal is blocked this turn'));
 }
 function clickFig(f) {
@@ -306,10 +329,11 @@ function doMove(to) {
   if (ui.sel == null) return; act({ t: 'move', uid: ui.sel, to, z: ui.z || undefined }); ui.sel = null; ui.z = '';
 }
 
+function mineTurnNow() { return V && V.cur === V.seat && !V.over; }
 function drawActions() {
   const a = $('#actions'); a.innerHTML = ''; if (!V.legal || V.over) { a.append(el('span', { class: 'muted' }, V.over ? '' : 'Waiting for the opponent…')); return; }
   if (V.legal.choose) { a.append(el('div', { class: 'notice' }, 'Click a glowing point to place it. '), el('button', { onclick: () => act({ t: 'choose', to: null }) }, ['pickOther', 'pickSwap', 'pickFx'].includes(V.legal.choose.kind) ? 'Skip' : V.legal.choose.kind === 'evade' ? 'Fight normally' : 'Stay where it is')); return; }
-  if (V.phase === 'battleChoice') { a.append('Click a highlighted enemy.'); return; }
+  if (V.phase === 'battleChoice') { if (mineTurnNow()) a.append(el('div', {}, 'Click a highlighted enemy to battle (a battle ends your turn).'), el('button', { class: 'primary', onclick: () => act({ t: 'battle', target: 'skip' }) }, 'Don’t battle · end turn')); else a.append('Waiting…'); return; }
   const me = V.players[V.seat];
   if (V.legal.loyalty && V.legal.loyalty.length && !V.moved) a.append(el('div', { class: 'row' }, ...V.legal.loyalty.map(u => { const f = V.figs.find(x => x.uid === u); return el('button', { class: 'platecard', style: '--pc:#f78fb3', title: 'Loyalty: move it to your bench, then you can use it again right away (clears its Wait).', onclick: () => act({ t: 'loyalty', uid: u }) }, el('span', { class: 'pc-ic' }, '🐾'), el('span', { class: 'pc-nm' }, 'Loyalty: ' + FIG[f.fid].name + ' → bench')); })));
   a.append(el('div', { class: 'muted small' }, '1) Optional plate  2) Pick a Pokémon (board or bench), then a glowing destination.'));
@@ -338,7 +362,8 @@ function zPanel(me) {
   box.append(row, el('div', { class: 'small ' + (ui.z ? 'zarmed' : 'muted') }, ui.z ? '⚡ Z-Move armed – now click a glowing destination to attack with it.' : 'No Z-Move chosen – this attack will be normal.'));
   return box;
 }
-function animWheel(info, size, slow) {
+let WID = 0;
+function animWheel(info, size, slow, ring) {
   const segs = info.segs, tot = segs.reduce((a, s) => a + s.s, 0), r = size / 2 - 6, c = size / 2;
   const svg = sv('svg', { width: size, height: size, viewBox: `0 0 ${size} ${size}`, class: 'awheel' });
   const rotor = sv('g', { style: `transform-origin:${c}px ${c}px` });
@@ -346,12 +371,24 @@ function animWheel(info, size, slow) {
   segs.forEach(s => {
     const a1 = a0 + (s.s / tot) * Math.PI * 2; const large = a1 - a0 > Math.PI ? 1 : 0;
     const d = segs.length === 1 ? `M${c},${c - r} A${r},${r} 0 1 1 ${c - 0.01},${c - r} Z` : `M${c},${c} L${c + r * Math.cos(a0)},${c + r * Math.sin(a0)} A${r},${r} 0 ${large} 1 ${c + r * Math.cos(a1)},${c + r * Math.sin(a1)} Z`;
-    rotor.append(sv('path', { d, fill: COL[s.c], stroke: '#0d1424', 'stroke-width': 1.5 }));
+    rotor.append(sv('path', { d, fill: COL[s.c], stroke: '#0a0a0a', 'stroke-width': 2 }));
+    if ((s.c === 'White' || s.c === 'Gold') && segs.length > 1 && size >= 120) { const n = Math.max(2, Math.round((a1 - a0) / 0.16)); for (let k = 0; k < n; k += 2) { const b0 = a0 + (a1 - a0) * k / n, b1 = a0 + (a1 - a0) * (k + 1) / n; rotor.append(sv('path', { d: `M${c},${c} L${c + r * Math.cos(b0)},${c + r * Math.sin(b0)} A${r},${r} 0 0 1 ${c + r * Math.cos(b1)},${c + r * Math.sin(b1)} Z`, fill: s.c === 'Gold' ? '#00000014' : '#0000000f' })); } }
     mids.push([acc / tot * 360, (acc + s.s) / tot * 360]); acc += s.s;
-    if (s.s / tot > 0.07) { const am = (a0 + a1) / 2; const lab = s.d && s.d.kind === 'num' && s.d.n ? s.d.n : s.d && s.d.kind === 'mult' ? s.d.n + '×' : s.d && s.d.kind === 'plus' ? s.d.n + '+' : s.c === 'Red' ? '✕' : ''; if (lab !== '') rotor.append(sv('text', { x: c + r * 0.66 * Math.cos(am), y: c + r * 0.66 * Math.sin(am) + 4, 'text-anchor': 'middle', 'font-size': 12, 'font-weight': 700, fill: s.c === 'White' || s.c === 'Gold' ? '#222' : '#fff' }, lab)); }
+    const frac = s.s / tot, am = (a0 + a1) / 2, ink = (s.c === 'White' || s.c === 'Gold') ? '#1a1a1a' : '#fff';
+    if (frac > 0.09 && s.n && size >= 120) {
+      // curved move name along the rim (flipped in the lower half so it reads upright)
+      const lower = Math.sin(am) > 0, rr = r * 0.8, id = 'wp' + (++WID); const sa = lower ? a1 - 0.03 : a0 + 0.03, ea = lower ? a0 + 0.03 : a1 - 0.03;
+      const pd = `M${c + rr * Math.cos(sa)},${c + rr * Math.sin(sa)} A${rr},${rr} 0 ${Math.abs(a1 - a0) > Math.PI ? 1 : 0} ${lower ? 0 : 1} ${c + rr * Math.cos(ea)},${c + rr * Math.sin(ea)}`;
+      const nm = s.n.length > 16 ? s.n.slice(0, 15) + '…' : s.n;
+      rotor.append(sv('path', { id, d: pd, fill: 'none' }), sv('text', { 'font-size': Math.max(9, size * 0.058), 'font-weight': 800, fill: ink, opacity: 0.92, 'letter-spacing': 0.5 }, sv('textPath', { href: '#' + id, startOffset: '50%', 'text-anchor': 'middle' }, nm)));
+    }
+    if (frac > 0.05) {
+      const lab = s.d && s.d.kind === 'num' && s.d.n ? String(s.d.n) : s.d && s.d.kind === 'mult' ? s.d.n + '×' : s.d && s.d.kind === 'plus' ? s.d.n + '+' : s.c === 'Red' ? '✕' : s.c === 'Purple' && s.d && s.d.stars ? '★'.repeat(Math.min(3, s.d.stars)) : '';
+      if (lab !== '') { const deg = am * 180 / Math.PI, flip = Math.cos(am) < 0; rotor.append(sv('text', { transform: `translate(${c},${c}) rotate(${flip ? deg + 180 : deg})`, x: flip ? -r * 0.46 : r * 0.46, y: size * 0.04, 'text-anchor': 'middle', 'font-size': size * (lab.length > 3 ? 0.07 : 0.11), 'font-weight': 900, fill: ink }, lab)); }
+    }
     a0 = a1;
   });
-  svg.append(rotor, sv('circle', { cx: c, cy: c, r: 9, fill: '#0d1424' }), sv('polygon', { points: `${c - 9},2 ${c + 9},2 ${c},22`, fill: '#ffcb05', stroke: '#000', 'stroke-width': 1.5 }));
+  svg.append(rotor, sv('circle', { cx: c, cy: c, r: r + 1, fill: 'none', stroke: '#0a0a0a', 'stroke-width': 9 }), sv('circle', { cx: c, cy: c, r: r + 7, fill: 'none', stroke: ring || '#dfe5f2', 'stroke-width': 3, filter: ring ? 'drop-shadow(0 0 6px ' + ring + ')' : '' }), sv('circle', { cx: c, cy: c, r: 13, fill: '#0d1424', stroke: '#c9d2e6', 'stroke-width': 3 }), sv('circle', { cx: c, cy: c, r: 5, fill: '#4a5678' }), sv('polygon', { points: `${c - 10},0 ${c + 10},0 ${c},26`, fill: '#e8261b', stroke: '#fff', 'stroke-width': 2, filter: 'drop-shadow(0 0 4px #ff4a3d)' }));
   const spins = info.spins && info.spins.length ? info.spins : [info.idx]; const plan = []; let rotAcc = 0;
   const drifts = (info.drifts && info.drifts.length === spins.length) ? info.drifts : [];
   const aim = (idx, i, fast) => { const [d0, d1] = mids[idx] || [0, 360]; const jit = (Math.random() - 0.5) * (d1 - d0) * 0.5; const want = 360 - ((d0 + d1) / 2 + jit);
@@ -383,9 +420,10 @@ function playBattle(m) {
 function startBattleOverlay(m, A, D, post, b, o) {
   o.classList.remove('hidden');
   const fa = FIG[A.fid], fd = FIG[D.fid]; SFX.play('spin');
-  const wa = animWheel(b.aw, 210, false), wd = animWheel(b.dw, 210, true);
+  const big = window.innerWidth > 900, WS = big ? Math.min(380, Math.floor(window.innerHeight * 0.5)) : 190; const rc = o2 => (o2.owner === post.seat ? '#3d8bff' : '#ff4a4a');
+  const wa = animWheel(b.aw, WS, false, rc(A)), wd = animWheel(b.dw, WS, true, rc(D));
   const resA = el('div', { class: 'bres' }), resD = el('div', { class: 'bres' }), mid = el('div', { class: 'bmid' });
-  const side = (f, who, w, resEl, name) => el('div', { class: 'bside' }, el('div', { class: 'bname', style: 'color:' + (who.owner === post.seat ? 'var(--me)' : 'var(--opp)') }, name), img(f), el('div', {}, f.name), w.svg, w.lbl, resEl);
+  const side = (f, who, w, resEl, name) => el('div', { class: 'bside ' + (who.owner === post.seat ? 'sb' : 'sr') }, el('div', { class: 'bbanner' }, el('span', { class: 'bname' }, name), el('span', { class: 'bgauge' }, ((post.players[who.owner] || {}).gauge || 0) + '%')), el('div', { class: 'bfig' }, img(f), el('div', { class: 'bfn' }, f.name)), w.svg, w.lbl, resEl);
   const nameA = post.players[A.owner].name, nameD = post.players[D.owner].name;
   mid.append(el('div', { class: 'vs' }, 'VS'), el('div', { class: 'small' }, `${nameA}'s ${fa.name} moved next to ${nameD}'s ${fd.name}`), el('div', { class: 'bresult' }), el('ul', { class: 'bevents' }));
   o.append(el('div', { class: 'battle' }, side(fa, A, wa, resA, nameA + (A.owner === post.seat ? ' (you)' : '')), mid, side(fd, D, wd, resD, nameD + (D.owner === post.seat ? ' (you)' : ''))), el('div', { class: 'small muted', style: 'position:absolute;bottom:14px' }, 'click to skip'));
