@@ -125,3 +125,22 @@ Split blue/red battle scene, big wheels with black rim + glowing team ring, sunb
 
 ## v10.32 — table-top look
 Wood-room backdrop, slightly tilted board, wooden turn plate, dark-blue bottom buttons (from the original board screen).
+
+## v10.33 — camera, themes, battle wedge, fight prompt
+- Battle scene shows only the wedge of each wheel at the red pointer (two wheels meeting at the diamond).
+- Benches and P.C. are drawn on the board itself; the board is much larger and uses a gentler camera tilt.
+- 11 procedural board themes (public/themes.js). Campaign chapters pick their own (gym) background; elsewhere choose one in the lobby ("Board theme", or Random).
+- New "⚔️ Battle time!" prompt (FIGHT / HOLD BACK) plus ⚔️ markers on points where a battle can start.
+
+## v10.34 — mobile-first game screen
+On phones the game screen is a single full-height column: HUD, board (bench and P.C. always visible), then a compact non-overlapping dock (plates scroll sideways, how-to line only for the first turns). Info/Log/Chat open as a full-screen sheet from the "Info / Log" button. The FIGHT / HOLD BACK prompt sits at the bottom of the board on phones.
+
+## v10.35 — Gems
+New currency 💎 (save field `gems`; existing saves get a one-time 10-gem gift). Earned from first story clears (1; 2 on boss fights; 4 on chapter clears), first Hard wins (2), Tower checkpoints on new floors (2/3/5), Daily Challenge wins (2) and quests (1/3/6/12 by chest tier). Spent on shop restocks: the shop now refreshes only every 6 h for free, and each paid restock in a cycle costs more (1,2,3,5,7,11,17… = ceil(1.6^n)); the counter resets at the free refresh.
+
+## v10.36 — Gem Shop + open PvP rollout
+- **Gem Shop** (top of Campaign → Shop, gems only): Premium Chest 💎20 (R or better, ignores shop tier), Royal Chest 💎50 (EX/Ultra, always a bonus plate while any remain), Plate Unlock 💎15, Pick-a-Pokémon 💎35 (choose 1 of 3 R+; an unclaimed offer is saved).
+- **Quick match** (open PvP, no room code): main-lobby ⚡ button and Campaign → PvP. Collection Quick match pairs two signed-in players using their own cards; with nobody found after ~7 s a trainer-named bot fills in (casual, not counted on the ladder). "Cancel search" button added.
+
+## v10.37 — board slab
+The board is now a framed playfield: metallic bevelled frame with drop shadow, translucent tiled surface over the theme, top light + vignette, bench trays, dashed start lines and centre line, hazard-striped goal pads (orange = enemy goal, blue = yours), glossy double-layer lanes and raised nodes.

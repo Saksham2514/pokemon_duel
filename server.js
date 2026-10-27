@@ -111,12 +111,13 @@ wss.on('connection', ws => {
     if (m.t === 'quick') {
       const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });
       const name = String(m.name || 'Trainer').slice(0, 24);
-      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws) { q = r; break; }
-      if (q) { clearTimeout(q.qTimer); q.open = false; q.seats[1] = mkSeat(name, m.deck); c.room = q; c.seat = 1; send(ws, { t: 'room', code: q.code, seat: 1, token: q.seats[1].token }); startGame(q); return; }
-      const code = rid(); const room = { code, seats: [mkSeat(name, m.deck), null], game: null, open: true }; rooms.set(code, room); c.room = room; c.seat = 0;
+      let own = null; if (m.owned) { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
+      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.owned === !!own && (!own || r.seats[0].user !== own.user)) { q = r; break; }
+      if (q) { clearTimeout(q.qTimer); q.open = false; q.seats[1] = mkSeat(own ? own.user : name, m.deck); if (own) q.seats[1].user = own.user; c.room = q; c.seat = 1; send(ws, { t: 'room', code: q.code, seat: 1, token: q.seats[1].token }); startGame(q); return; }
+      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true }; if (own) { room.owned = true; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token }); send(ws, { t: 'waiting', code, quick: true });
       room.qTimer = setTimeout(() => {
-        if (!room.open || room.seats[1] || room.game) return; room.open = false;
+        if (!room.open || room.seats[1] || room.game) return; room.open = false; room.owned = false; /* bot games never count for the ladder */
         const pool = ['Ace Trainer Kai', 'Ranger Mira', 'Youngster Joey', 'Lass Hana', 'Hiker Boulder', 'Swimmer Tide', 'Scientist Rowan', 'Cooltrainer Sage'];
         room.seats[1] = mkSeat(pool[(Math.random() * pool.length) | 0], randomDeck(Math.random), true, 0.85);
         startGame(room);

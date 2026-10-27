@@ -35,7 +35,10 @@
   function load() {
     return (mem && auth && memOwner === auth.name) ? mig(mem) : null;
   }
-  function mig(s) { if (!s.plates) { s.plates = {}; STARTER_PLATES.forEach(k => (s.plates[k] = 1)); (s.decks || []).forEach(d => (d.plates || []).forEach(k => (s.plates[k] = 1))); } s.free = s.free || {}; s.stats = s.stats || { chests: 0, earned: 0, rivals: 0 }; s.quests = s.quests || {}; s.tower = s.tower || { best: 0, cur: 0 }; s.daily = s.daily || {}; s.hardWon = s.hardWon || {}; s.beaten = s.beaten || {}; return s; }
+  function mig(s) { if (!s.plates) { s.plates = {}; STARTER_PLATES.forEach(k => (s.plates[k] = 1)); (s.decks || []).forEach(d => (d.plates || []).forEach(k => (s.plates[k] = 1))); } s.free = s.free || {}; s.stats = s.stats || { chests: 0, earned: 0, rivals: 0 }; s.quests = s.quests || {}; s.tower = s.tower || { best: 0, cur: 0 }; s.daily = s.daily || {}; s.hardWon = s.hardWon || {}; s.beaten = s.beaten || {}; if (s.gems == null) s.gems = 10; s.pickOffer = s.pickOffer || null; s.restocks = s.restocks || 0; s.stockAt = s.stockAt || 0; return s; }
+  const QGEM = { bronze: 1, silver: 3, gold: 6, mythic: 12 }, STOCK_MS = 6 * 3600e3;
+  const gemGain = (lines, n, why) => { if (n > 0) { S.gems += n; lines.push(`+💎${n}` + (why ? ' ' + why : '')); } };
+  const restockCost = () => Math.ceil(Math.pow(1.6, S.restocks || 0));
   let auth = null; try { auth = JSON.parse(localStorage.getItem('duel_auth') || 'null'); } catch (e) { }
   const api = (url, method, body) => fetch(url, { method: method || 'GET', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer ' + auth.token } : {}) }, body: body ? JSON.stringify(body) : undefined }).then(r => r.json().then(j => ({ ok: r.ok, status: r.status, ...j })));
   let saveT = null, dirty = false; const flush = () => { clearTimeout(saveT); if (!auth || !dirty) return Promise.resolve(); dirty = false; return api('/api/save', 'PUT', { save: S }).catch(() => { dirty = true; }); };
@@ -82,7 +85,8 @@
     for (const r of RAR) { if ((x -= w[r]) < 0) return r; }
     return RAR[0];
   }
-  function rollFig(odds, rng) { const r = weightedRarity(odds, rng || Math.random); const p = byRar(r); return p[((rng || Math.random)() * p.length) | 0]; }
+  function rawRarity(odds, rng) { let tot = 0; RAR.forEach(r => (tot += odds[r] || 0)); let x = rng() * tot; for (const r of RAR) { if ((x -= (odds[r] || 0)) < 0) return r; } return 'R'; }
+  function rollFig(odds, rng, raw) { const r = raw ? rawRarity(odds, rng || Math.random) : weightedRarity(odds, rng || Math.random); const p = byRar(r); return p[((rng || Math.random)() * p.length) | 0]; }
   function makeStock() {
     const odds = { C: 40, UC: 33, R: 18, EX: 7, UX: 2 }; const out = [];
     let guard = 0; while (out.length < 8 && guard++ < 100) { const f = rollFig(odds); if (!out.includes(f.id)) out.push(f.id); }
@@ -118,7 +122,7 @@
     return el('div', { class: 'camphead' },
       el('button', { class: 'ghost', onclick: () => { show('lobby'); } }, '← Menu'),
       el('h2', {}, 'Campaign'),
-      el('div', { class: 'coins' }, '🪙 ', el('b', {}, S.coins)), auth ? el('button', { class: 'ghost', title: 'Sign out', onclick: () => window.Camp.signOut() }, '👤 ' + auth.name + ' ⏏') : '',
+      el('div', { class: 'coins' }, '🪙 ', el('b', {}, S.coins), el('span', { class: 'gems', title: 'Gems: rare currency from first clears, Tower checkpoints, daily wins and quests. Spend them on shop restocks.' }, ' 💎 ', el('b', {}, S.gems))), auth ? el('button', { class: 'ghost', title: 'Sign out', onclick: () => window.Camp.signOut() }, '👤 ' + auth.name + ' ⏏') : '',
       el('div', { class: 'small muted' }, `Collection ${Object.keys(S.owned).length}/${DATA.figures.length} · Wins ${S.wins} · Shop tier: `, el('b', { style: 'color:' + RCOL[RAR[t]] }, RNAME[RAR[t]] + (t < 4 ? ' → beat bosses to unlock more' : ' (max)'))),
       el('div', { class: 'tabs' }, ...[['battle', '⚔ Story'], ['tower', '🗼 Tower'], ['quest', '📜 Quests' + (questsReady() ? ' ❗' : '')], ['coll', '🎒 Collection'], ['decks', '🃏 Decks'], ['pvp', '🤝 PvP'], ['shop', '🛒 Shop & Chests']].map(([k, n]) => el('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; render(); } }, n))));
   }
@@ -142,7 +146,7 @@
     const code = el('input', { placeholder: 'ROOM CODE', maxlength: 4, style: 'text-transform:uppercase;width:110px' });
     const go = async t => { if (!ok || !auth) return; await flush(); window.pvpMode = true; const d = curDeck(); window.pvpLast = { auth: auth.token, deck: { figs: d.figs.slice(), plates: d.plates.slice() } }; note.classList.add('hidden'); send({ t, owned: true, auth: auth.token, name: auth.name, code: code.value, deck: window.pvpLast.deck }); };
     body.append(el('div', { class: 'panel' }, el('h3', {}, '🤝 Collection PvP'), el('div', { class: 'muted' }, 'Duel another signed-in player using only the Pokémon and plates you own (your active deck). The server checks your collection. Wins and losses go on your PvP record; coins, chests and progress are not affected.'),
-      el('div', { class: 'row gap', style: 'margin-top:10px' }, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('create') }, 'Create room'), code, el('button', { disabled: ok ? null : '', onclick: () => go('join') }, 'Join room')), note), rec);
+      el('div', { class: 'row gap', style: 'margin-top:10px' }, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('create') }, 'Create room'), code, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('quick') }, '⚡ Quick match'), el('button', { disabled: ok ? null : '', onclick: () => go('join') }, 'Join room')), note), rec);
   }
   function deckBar(body) {
     const d = curDeck(); const ok = deckOk(d);
@@ -254,8 +258,8 @@
     QUESTS.slice().sort((a, b) => (S.quests[a.id] ? 1 : 0) - (S.quests[b.id] ? 1 : 0) || (b.k() >= b.g) - (a.k() >= a.g)).forEach(q => {
       const v = Math.min(q.k(), q.g), done = !!S.quests[q.id], ready = !done && v >= q.g;
       lst.append(el('div', { class: 'quest' + (done ? ' done' : ready ? ' ready' : '') }, el('div', { class: 'qinfo' }, el('b', {}, q.n), el('div', { class: 'small muted' }, q.d), el('div', { class: 'bar' }, el('i', { style: `width:${v / q.g * 100}%` })), el('span', { class: 'small' }, `${v}/${q.g}`)),
-        el('div', { class: 'qrew small' }, (q.r.coins ? '🪙' + q.r.coins : ''), ' ', q.r.chest ? '🎁 ' + FREE_NAMES[q.r.chest] : ''),
-        el('button', { class: ready ? 'primary' : 'ghost', ...(ready ? {} : { disabled: '' }), onclick: () => { S.quests[q.id] = 1; S.coins += q.r.coins || 0; if (q.r.chest) S.free[q.r.chest] = (S.free[q.r.chest] || 0) + 1; save(); render(); } }, done ? 'Claimed' : 'Claim')));
+        el('div', { class: 'qrew small' }, (q.r.coins ? '🪙' + q.r.coins : ''), ' ', QGEM[q.r.chest] ? '💎' + QGEM[q.r.chest] + ' ' : '', q.r.chest ? '🎁 ' + FREE_NAMES[q.r.chest] : ''),
+        el('button', { class: ready ? 'primary' : 'ghost', ...(ready ? {} : { disabled: '' }), onclick: () => { S.quests[q.id] = 1; S.coins += q.r.coins || 0; S.gems += QGEM[q.r.chest] || 0; if (q.r.chest) S.free[q.r.chest] = (S.free[q.r.chest] || 0) + 1; save(); render(); } }, done ? 'Claimed' : 'Claim')));
     });
     body.append(el('div', { class: 'panel mini' }, `Quests: ${Object.keys(S.quests).length}/${QUESTS.length} claimed. Free chests are opened in the Shop & Chests tab.`), lst);
   }
@@ -305,7 +309,9 @@
   }
 
   function tShop(body) {
-    if (!S.stock) { S.stock = makeStock(); save(); }
+    if (!S.stock || !S.stockAt || Date.now() - S.stockAt > STOCK_MS) { S.stock = makeStock(); S.stockAt = Date.now(); S.restocks = 0; save(); }
+    const leftMs = Math.max(0, S.stockAt + STOCK_MS - Date.now()), rc = restockCost();
+    body.append(gemShop());
     const chests = el('div', { class: 'chests' });
     const t = tierIdx();
     CHESTS.forEach(c => {
@@ -324,11 +330,34 @@
       pb.append(el('div', { class: 'pb' + (own ? ' own' : ''), style: '--pc:' + (COL[Pp.color] || '#f78fb3') }, el('b', {}, Pp.name), el('span', { class: 'muted' }, ' · ' + Pp.color + ' · cost ' + Pp.cost), el('div', { class: 'small muted' }, Pp.text),
         own ? el('div', { class: 'small' }, '✓ Owned') : el('button', { class: 'buy', disabled: S.coins >= pr ? null : '', onclick: () => { if (S.coins < pr) return; S.coins -= pr; S.plates[k] = 1; save(); render(); } }, '🪙' + pr))); });
     pb.querySelectorAll('button').forEach(b => { if (b.getAttribute('disabled') === null) b.removeAttribute('disabled'); });
-    body.append(el('div', { class: 'collgrid' }, el('div', {}, el('h4', {}, 'Chests'), chests, el('h4', {}, `Plates (${Object.keys(S.plates).length}/${Object.keys(PL).length} owned)`), el('div', { class: 'small muted' }, 'Plates are one-use boosts you take into a duel (6 plate-points per deck). Buy them here, or win them from chapter bosses, chests and the Tower.'), pb, el('h4', {}, 'Today\'s stock ', el('button', { class: 'ghost', onclick: () => { if (S.coins >= 100) { S.coins -= 100; S.stock = makeStock(); save(); render(); } } }, 'Restock · 🪙100')), st), el('div', { id: 'campInfo', class: 'card campcard' })));
+    body.append(el('div', { class: 'collgrid' }, el('div', {}, el('h4', {}, 'Chests'), chests, el('h4', {}, `Plates (${Object.keys(S.plates).length}/${Object.keys(PL).length} owned)`), el('div', { class: 'small muted' }, 'Plates are one-use boosts you take into a duel (6 plate-points per deck). Buy them here, or win them from chapter bosses, chests and the Tower.'), pb, el('h4', {}, 'Today\'s stock ', el('button', { class: 'ghost', disabled: S.gems >= rc ? null : '', title: 'Each restock in the same cycle costs more', onclick: () => { if (S.gems < rc) return; S.gems -= rc; S.restocks++; S.stock = makeStock(); save(); render(); } }, `Restock · 💎${rc}`), el('span', { class: 'small muted' }, ` Free refresh in ${Math.floor(leftMs / 3600e3)}h ${Math.floor(leftMs % 3600e3 / 60e3)}m · price rises with every restock (used ${S.restocks || 0}×)`)), st), el('div', { id: 'campInfo', class: 'card campcard' })));
   }
 
+  const GEM_CHESTS = [
+    { id: 'gprem', name: 'Premium Chest', gem: 20, icon: '🎁', col: '#4dd2ff', odds: { R: 70, EX: 25, UX: 5 }, platePct: 0.3, note: 'Rare or better, always. Ignores shop tier.' },
+    { id: 'groyal', name: 'Royal Chest', gem: 50, icon: '👑', col: '#ff9ad5', odds: { EX: 70, UX: 30 }, platePct: 1, note: 'EX or Ultra, always. Includes a bonus plate while any are left.' },
+  ];
+  function pickOffer(ids) {
+    const ov = el('div', { class: 'overlay chestov' }); const box = el('div', { class: 'chestbox', style: '--cc:#4dd2ff' }, el('div', { class: 'rname' }, 'Choose one Pokémon to keep!'));
+    const row = el('div', { class: 'row', style: 'justify-content:center;gap:12px;flex-wrap:wrap' });
+    ids.forEach(id => { const f = fig(id); row.append(el('button', { class: 'cfig', style: 'border-color:' + RCOL[f.rarity] + ';width:120px;cursor:pointer', onclick: () => { S.owned[id] = (S.owned[id] || 0) + 1; S.pickOffer = null; S.stats.chests++; save(); ov.remove(); render(); } }, img(f), el('div', { class: 'nm' }, f.name), el('div', { class: 'small', style: 'color:' + RCOL[f.rarity] }, RNAME[f.rarity] + (S.owned[id] ? ' · own ×' + S.owned[id] : ' · NEW')))); });
+    box.append(row, el('button', { class: 'ghost', style: 'margin-top:10px', onclick: () => { ov.remove(); render(); } }, 'Decide later (offer is saved)')); ov.append(box); document.body.append(ov);
+  }
+  function gemShop() {
+    const box = el('div', { class: 'panel gemshop' }, el('h3', {}, '💎 Gem Shop'), el('div', { class: 'small muted' }, 'Gems come from first clears, Tower checkpoints, Daily Challenges and quests. Nothing here can be bought with coins.'));
+    const g = el('div', { class: 'chests' });
+    GEM_CHESTS.forEach(c => g.append(el('div', { class: 'chest', style: '--cc:' + c.col }, el('div', { class: 'cicon' }, c.icon), el('b', {}, c.name), el('div', { class: 'small muted' }, c.note),
+      el('button', { class: 'primary', ...(S.gems >= c.gem ? {} : { disabled: '' }), onclick: () => openChest(c) }, `Open · 💎${c.gem}`))));
+    const left = Object.keys(PL).filter(k => !S.plates[k]).length;
+    g.append(el('div', { class: 'chest', style: '--cc:#ffcb05' }, el('div', { class: 'cicon' }, '🔶'), el('b', {}, 'Plate Unlock'), el('div', { class: 'small muted' }, left ? `Unlocks a random plate you don't own (${left} left).` : 'You own every plate.'),
+      el('button', { class: 'primary', ...(S.gems >= 15 && left ? {} : { disabled: '' }), onclick: () => { if (S.gems < 15) return; const ln = []; if (!plateDrop(ln, 'Gem shop')) return; S.gems -= 15; save(); alert(ln.join('\n')); render(); } }, 'Unlock · 💎15')));
+    const has = S.pickOffer && S.pickOffer.length;
+    g.append(el('div', { class: 'chest', style: '--cc:#9be56a' }, el('div', { class: 'cicon' }, '🎯'), el('b', {}, 'Pick-a-Pokémon'), el('div', { class: 'small muted' }, has ? 'You have an unclaimed offer!' : 'See 3 Rare-or-better Pokémon and keep the one you want.'),
+      el('button', { class: 'primary', ...(has || S.gems >= 35 ? {} : { disabled: '' }), onclick: () => { if (!has) { if (S.gems < 35) return; const ids = []; let guard = 0; while (ids.length < 3 && guard++ < 60) { const f = rollFig({ R: 62, EX: 30, UX: 8 }, null, true); if (!ids.includes(f.id)) ids.push(f.id); } S.gems -= 35; S.pickOffer = ids; save(); } pickOffer(S.pickOffer); } }, has ? 'Choose now' : 'Offer · 💎35')));
+    box.append(g); return box;
+  }
   function openChest(c, free) {
-    if (free) { if (!(S.free[c.id] > 0)) return; S.free[c.id]--; } else { if (S.coins < c.price) return; S.coins -= c.price; } S.stats.chests++; const platePl = Math.random() < (c.id === 'gold' ? 0.4 : c.id === 'silver' ? 0.25 : 0.12) ? plateDrop([], 'chest') : null; const f = rollFig(c.odds); const dup = !!S.owned[f.id]; S.owned[f.id] = (S.owned[f.id] || 0) + 1; save();
+    if (free) { if (!(S.free[c.id] > 0)) return; S.free[c.id]--; } else if (c.gem) { if (S.gems < c.gem) return; S.gems -= c.gem; } else { if (S.coins < c.price) return; S.coins -= c.price; } S.stats.chests++; const platePl = Math.random() < (c.platePct != null ? c.platePct : c.id === 'gold' ? 0.4 : c.id === 'silver' ? 0.25 : 0.12) ? plateDrop([], 'chest') : null; const f = rollFig(c.odds, null, !!c.gem); const dup = !!S.owned[f.id]; S.owned[f.id] = (S.owned[f.id] || 0) + 1; save();
     const ov = el('div', { class: 'overlay chestov' }); const box = el('div', { class: 'chestbox', style: '--cc:' + c.col }, el('div', { class: 'bigchest shake' }, c.icon), el('div', { class: 'muted' }, 'Opening…'));
     ov.append(box); document.body.append(ov);
     setTimeout(() => {
@@ -355,17 +384,18 @@
     if (win) {
       S.wins++;
       if (b.kind === 'tower') {
-        const T = S.tower; T.cur = b.floor; T.best = Math.max(T.best, b.floor); S.coins += b.reward; S.stats.earned += b.reward; lines.push(`+🪙${b.reward} — Floor ${b.floor} cleared!`);
+        const T = S.tower; const newBest = b.floor > T.best; T.cur = b.floor; T.best = Math.max(T.best, b.floor); S.coins += b.reward; S.stats.earned += b.reward; lines.push(`+🪙${b.reward} — Floor ${b.floor} cleared!`);
         if (b.floor % 10 === 0) plateDrop(lines, 'Tower floor ' + b.floor);
+        if (b.floor % 5 === 0 && newBest) gemGain(lines, b.floor >= 30 ? 5 : b.floor >= 15 ? 3 : 2, 'Tower checkpoint');
         if (b.floor % 5 === 0) { const ck = b.floor >= 30 ? 'gold' : b.floor >= 15 ? 'silver' : 'bronze'; S.free[ck] = (S.free[ck] || 0) + 1; lines.push(`Checkpoint reached! 🎁 Free ${FREE_NAMES[ck]}`); }
         lines.push(`Next: floor ${b.floor + 1}`);
       } else if (b.kind === 'daily') {
-        S.coins += b.reward; S.daily = { key: b.key, won: true }; S.stats.daily = (S.stats.daily || 0) + 1; S.free.silver = (S.free.silver || 0) + 1; lines.push(`+🪙${b.reward}`, '🎁 Free Silver Chest!');
+        S.coins += b.reward; S.daily = { key: b.key, won: true }; S.stats.daily = (S.stats.daily || 0) + 1; S.free.silver = (S.free.silver || 0) + 1; lines.push(`+🪙${b.reward}`, '🎁 Free Silver Chest!'); gemGain(lines, 2, 'Daily Challenge');
       } else {
         const first = !S.beaten[b.id]; const coins = first ? b.reward : Math.floor(b.reward * 0.3); S.coins += coins; S.stats.earned += coins; lines.push(`+🪙${coins}${first ? ' (first victory!)' : ''}`);
-        if (b.hard) { lines.push('🔥 Hard mode cleared!'); if (!S.hardWon[b.id]) { S.hardWon[b.id] = 1; const ck = b.ch < 4 ? 'bronze' : b.ch < 8 ? 'silver' : 'gold'; S.free[ck] = (S.free[ck] || 0) + 1; lines.push('🎁 Bonus: free ' + FREE_NAMES[ck] + ' for the first Hard win!'); } }
+        if (b.hard) { lines.push('🔥 Hard mode cleared!'); if (!S.hardWon[b.id]) { S.hardWon[b.id] = 1; gemGain(lines, 2, 'first Hard win'); const ck = b.ch < 4 ? 'bronze' : b.ch < 8 ? 'silver' : 'gold'; S.free[ck] = (S.free[ck] || 0) + 1; lines.push('🎁 Bonus: free ' + FREE_NAMES[ck] + ' for the first Hard win!'); } }
         if (first) {
-          S.beaten[b.id] = 1; const bd = bossDeck(b); const dropId = b.last ? bd.figs[0] : bd.figs[(Math.random() * bd.figs.length) | 0]; const f = fig(dropId); S.owned[dropId] = (S.owned[dropId] || 0) + 1; lines.push(`${b.name} gives you ${f.name} (${RNAME[f.rarity]})!`);
+          S.beaten[b.id] = 1; gemGain(lines, b.last ? 4 : (b.idx % 4 === 3 ? 2 : 1), b.last ? 'chapter clear' : 'first victory'); const bd = bossDeck(b); const dropId = b.last ? bd.figs[0] : bd.figs[(Math.random() * bd.figs.length) | 0]; const f = fig(dropId); S.owned[dropId] = (S.owned[dropId] || 0) + 1; lines.push(`${b.name} gives you ${f.name} (${RNAME[f.rarity]})!`);
           if (b.last || (b.idx % 4 === 3)) plateDrop(lines, b.last ? 'chapter reward' : 'boss reward');
           if (b.unlock) lines.push(`${RNAME[b.unlock]} Pokémon now appear in the shop and chests!`);
           if (b.last) { const ch = CH[b.ch]; lines.push(`🏅 ${ch.badge} earned! Chapter ${b.ch + 1} complete!`); if (b.chest) { S.free[b.chest] = (S.free[b.chest] || 0) + 1; lines.push(`🎁 Free ${FREE_NAMES[b.chest]}`); } const nc = CH[b.ch + 1]; lines.push(nc ? `Chapter ${b.ch + 2} unlocked: ${nc.name}` : 'You beat the entire campaign — you are a legend!'); }
@@ -376,7 +406,7 @@
       S.losses++; const fee = Math.min(S.coins, b.fee); S.coins -= fee; lines.push(fee ? `-🪙${fee} lost on defeat. Tweak your deck and try again!` : 'Defeated. Tweak your deck and try again!');
       if (b.kind === 'tower') { S.tower.cur = Math.floor(S.tower.cur / 5) * 5; lines.push(`You fall back to floor ${S.tower.cur + 1}.`); }
     }
-    S.stock = null; save();
+    save();
     return el('div', { class: 'reward' }, ...lines.map(x => el('div', {}, x)));
   }
 

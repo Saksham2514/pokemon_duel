@@ -8,7 +8,7 @@
 </head>
 <body>
 <header id="top">
-  <div class="brand"><span class="ball"></span> POKÉMON DUEL <small>web · build v10.32</small></div>
+  <div class="brand"><span class="ball"></span> POKÉMON DUEL <small>web · build v10.37</small></div>
   <div id="topinfo"></div>
   <div class="spacer"></div>
   <button id="btnSnd" class="ghost" title="Sound on/off (M)">🔊</button>
@@ -23,9 +23,11 @@
     <p>A fan-made browser recreation of the retired mobile game. All 593 figures from your data file are playable.</p>
     <div class="row">
       <label>Trainer name <input id="name" maxlength="16" placeholder="Trainer"></label>
+      <label>Board theme <select id="themeSel"></select></label>
     </div>
     <div class="row gap">
       <button id="goCamp" class="primary">⭐ Single-player campaign</button>
+      <button id="goQuick" class="primary">⚡ Quick match</button>
       <button id="goDeck">Free play / multiplayer</button>
     </div>
     <p class="muted" id="deckSummary"></p>
@@ -66,11 +68,12 @@
   <div class="gamegrid">
     <section class="boardwrap">
       <div id="oppZone" class="zone"></div>
-      <svg id="board" viewBox="-30 0 720 675" preserveAspectRatio="xMidYMid meet"></svg>
+      <svg id="board" viewBox="-30 -130 720 910" preserveAspectRatio="xMidYMid meet"></svg>
       <div id="myZone" class="zone"></div>
       <div id="dock"><div id="turnBanner" class="banner"></div><div id="actions" class="panel mini"></div><div class="dockbtns"><button id="btnForfeit" class="ghost">Forfeit</button><button id="btnInfoToggle" class="ghost">Info / Log</button></div></div>
     </section>
     <aside class="sidebar">
+      <button id="btnCloseSide" class="ghost sideclose">✕ Close</button>
       <details id="drawer" open><summary>Info · Log · Chat</summary>
         <div id="info" class="card"></div>
         <div class="panel mini"><h4>Log</h4><div id="log" class="log"></div></div>
@@ -98,6 +101,7 @@
   <button id="helpClose" class="primary">Got it</button>
 </div></div>
 
+<script src="themes.js"></script>
 <script src="app.js"></script>
 <script src="campaign_story.js"></script>
 <script src="campaign.js"></script>

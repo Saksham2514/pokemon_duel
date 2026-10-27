@@ -377,7 +377,7 @@ button{border-radius:10px}
   #hud{grid-column:1}#oppZone{grid-column:1}#board{grid-column:1;justify-self:center}#myZone{grid-column:1}
   #dock{grid-column:2;grid-row:1 / span 3;margin-top:0}
   .sidebar{grid-column:2;grid-row:4 / span 4}
-  #board{max-height:calc(100vh - 330px)}
+  #board{max-height:calc(100vh - 150px)}
 }
 
 /* battle scene (split blue / red like the original) */
@@ -413,3 +413,86 @@ button{border-radius:10px}
 #dock .dockbtns button{background:linear-gradient(#10243f,#0a1628);color:#4fd8ff;border:2px solid #2a5a86;font-weight:700}
 #dock .dockbtns #btnForfeit{background:linear-gradient(#10243f,#0a1628);color:#8fb0d0;border-color:#2a5a86}
 #dock{background:linear-gradient(#2a1a10,#0c0703)}
+
+/* ===== battle stage: only the wedge at the pointer is visible (like the original) ===== */
+#battleOverlay{background:#000;overflow:hidden}
+.bstage{--W:min(100vw,54vh);position:relative;width:var(--W);height:calc(var(--W)*1.72);overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#2a1a1a,#07080d 75%);box-shadow:0 0 0 2px #1b2b52,0 0 60px #000}
+.bstage .bw{position:absolute;width:calc(var(--W)*1.2);height:calc(var(--W)*1.2)}
+.bstage .bw svg{width:100%;height:100%;filter:drop-shadow(0 8px 18px #000c)}
+.bstage .bw.top{left:calc(var(--W)*.16);top:calc(var(--W)*-.33);transform:rotate(206deg)}
+.bstage .bw.bot{left:calc(var(--W)*-.365);top:calc(var(--W)*.77);transform:rotate(25deg)}
+.bstage .bbeam{position:absolute;inset:0;pointer-events:none;background:linear-gradient(115deg,transparent 38%,#ff4de155 46%,#fff8 49%,#5aa0ff66 52%,transparent 60%);mix-blend-mode:screen;animation:flare 2.4s ease-in-out infinite}
+.bcorner{position:absolute;z-index:3;text-shadow:0 2px 6px #000,0 0 12px #000}
+.bcorner.tl{left:4%;top:3%;max-width:60%}
+.bcorner.br{right:4%;bottom:3%;text-align:right;max-width:70%}
+.bcorner .bwho{font-size:calc(var(--W)*.04);color:#ff9aa0;font-weight:800}
+.bcorner .dm{font-size:calc(var(--W)*.16);line-height:1;font-weight:900}
+.bcorner .mv{font-size:calc(var(--W)*.065);font-weight:800}
+.bcorner.tl .mv{color:#ff8fc7}
+.bcorner .bnote{font-size:calc(var(--W)*.03);color:#d6def5;max-width:100%;line-height:1.25;margin-top:2px}
+.bcorner .spinlbl{font-size:calc(var(--W)*.032);height:auto}
+.bport{position:absolute;left:3%;bottom:2%;z-index:3;display:flex;align-items:center;gap:6px}
+.bport img{width:calc(var(--W)*.2);height:calc(var(--W)*.2);border-radius:50%;border:3px solid #fff;background:#10172b;object-fit:contain}
+.bport .bpn{font-size:calc(var(--W)*.034);font-weight:800;max-width:calc(var(--W)*.3);line-height:1.15;text-shadow:0 2px 6px #000}
+.bstage .bcenter{position:absolute;left:0;right:0;top:44%;z-index:4;width:auto;background:none;padding:0;flex-direction:column;align-items:center;text-align:center;pointer-events:none}
+.bstage .bresult{font-size:calc(var(--W)*.065);margin:0;padding:6px 10px;background:#000b;border-radius:8px;display:inline-block}
+.bstage .bevents{display:none}
+.bskip{position:absolute;bottom:6px;left:0;right:0;text-align:center;z-index:5;pointer-events:none}
+#battleOverlay .bres{min-height:0}
+.bstage .bw svg.awheel{max-width:none;width:100%;height:100%;margin:0}
+
+#game{background:radial-gradient(ellipse at 50% 0,var(--room,#6b3f22) 0,#120a05 110%)}
+.zone{display:none}
+
+.swordpulse{animation:spulse .9s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes spulse{50%{transform:scale(1.35)}}
+#fightPrompt{position:absolute;left:50%;top:64%;transform:translate(-50%,-50%);z-index:30;min-width:min(86%,420px);padding:14px 16px;border-radius:18px;background:linear-gradient(#18223f,#0a1126);border:3px solid #ffcb05;box-shadow:0 0 0 4px #000a,0 0 40px #ffcb0577,0 20px 40px #000c;text-align:center;animation:fpin .25s ease-out}
+@keyframes fpin{from{transform:translate(-50%,-50%) scale(.7);opacity:0}}
+#fightPrompt .fp-title{font-size:26px;font-weight:900;color:#ffd45a;text-shadow:0 2px 0 #7a4a00}
+#fightPrompt .fp-sub{font-size:13px;color:#cdd8f6;margin:4px 0 10px}
+#fightPrompt .fp-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#fightPrompt button{display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;font-size:16px;border:3px solid #000;cursor:pointer}
+#fightPrompt button b{display:block;font-size:20px;letter-spacing:.04em}#fightPrompt button small{display:block;font-size:11px;opacity:.85}
+#fightPrompt .fp-fight{background:linear-gradient(#ff7a4a,#d62a1a);color:#fff;box-shadow:0 4px 0 #6e0f08;animation:fpulse 1s infinite}
+#fightPrompt .fp-fight img{width:38px;height:38px;border-radius:50%;background:#10172b;border:2px solid #fff}
+#fightPrompt .fp-skip{background:linear-gradient(#3a4a72,#1d2744);color:#dfe8ff;box-shadow:0 4px 0 #0a1020}
+@keyframes fpulse{50%{filter:brightness(1.25);transform:scale(1.04)}}
+#dock .howto{font-size:12px;color:#d5def5;line-height:1.4;padding:2px 2px 6px}.howto .swordnote{color:#ffd45a;font-weight:700}
+@media(max-width:900px){#board{transform:perspective(1200px) rotateX(6deg);max-height:none;margin-bottom:6px}.boardwrap{padding:0 2px}}
+
+/* ===== mobile-first game screen: board fills the space between the HUD and a compact dock ===== */
+.sideclose{display:none}
+@media(max-width:900px){
+  #top{padding:4px 8px;gap:6px;flex-wrap:nowrap}#top #topinfo{display:none}#top button{padding:6px 10px;font-size:12px}
+  #btnRestart{display:none!important}
+  #game.screen:not(.hidden){display:flex;flex-direction:column;height:calc(100dvh - 46px);min-height:0}
+  #game .gamegrid{display:flex;flex-direction:column;flex:1;min-height:0;gap:0;padding:0}
+  #game .boardwrap{display:flex;flex-direction:column;flex:1;min-height:0;position:relative}
+  #hud{margin:2px 4px;flex:none}#hud .hs{padding:3px 8px}#hud .hn{font-size:12px}#hud .hc{font-size:15px}#hud .hturn b{font-size:18px}
+  #board{flex:1 1 0;min-height:0;width:100%;height:100%;max-height:none!important;transform:none;margin:0;border-width:2px;border-radius:6px}
+  #dock{position:static;flex:none;margin:0;padding:4px 6px 6px;border-radius:10px 10px 0 0}
+  #dock .banner{padding:4px 8px;font-size:14px;margin-bottom:4px}
+  #dock #actions{padding:4px 6px;max-height:none;overflow:visible}
+  #dock #actions .row{flex-wrap:nowrap;overflow-x:auto;gap:6px;margin:2px 0;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+  #dock .platecard{flex:none;padding:4px 8px;font-size:11px;min-height:32px}
+  #dock .zpanel{padding:3px 8px;margin-top:3px;font-size:11px}#dock .zpanel .small{display:none}
+  #dock .howto{font-size:11px;padding:0 0 3px}
+  #dock .notice{font-size:11px;padding:3px 6px}
+  #dock .dockbtns{margin-top:4px}#dock .dockbtns button{padding:6px 12px;font-size:12px}
+  #game .sidebar{display:none;position:fixed;inset:0;z-index:60;background:#0a0f1d;overflow:auto;padding:10px}
+  #game .sidebar.open{display:block}.sideclose{display:block;margin-bottom:8px;width:100%}
+  #fightPrompt{top:50%}
+}
+
+@media(max-width:900px){
+  #game #board,.boardwrap #board{transform:none!important}
+  #fightPrompt{top:auto;bottom:4px;left:4px;right:4px;transform:none;min-width:0;padding:8px 10px;border-radius:14px;animation:none}
+  #fightPrompt .fp-title{font-size:18px}#fightPrompt .fp-sub{font-size:11px;margin:2px 0 6px}
+  #fightPrompt .fp-btns{flex-wrap:nowrap;gap:8px}#fightPrompt button{flex:1;justify-content:center;padding:8px;font-size:13px}#fightPrompt button b{font-size:15px}
+  #fightPrompt .fp-fight img{width:28px;height:28px}
+}
+@media(max-width:900px){#board{background:transparent!important;border:0}}
+@media(max-width:900px){#game,#game .gamegrid,#game .boardwrap,#dock,#dock #actions,#hud{min-width:0;max-width:100%;box-sizing:border-box}#dock{overflow:hidden}#dock #actions .row{max-width:100%}#dock .howto{white-space:normal}html,body{overflow-x:hidden}}
+@media(max-width:900px){.plateAnim{width:92vw;max-width:92vw;box-sizing:border-box;padding:10px 12px;gap:10px}.plateAnim .pa-icon{font-size:38px}.plateAnim .pa-name{font-size:18px}}
+
+.gems{margin-left:12px;color:#7fe3ff;font-weight:800}

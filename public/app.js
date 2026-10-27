@@ -80,6 +80,7 @@ function drain() {
 }
 function onMsg(m) {
   if (m.t === 'room') { session = { code: m.code, seat: m.seat, token: m.token, bot: !!m.bot }; try { sessionStorage.setItem('duel_session', JSON.stringify(session)); } catch (e) { } }
+  else if (m.t === 'waiting' && m.quick && window.pvpMode) { Camp.pvpMsg('Searching for a duelist… (if nobody is found in a few seconds you will get a casual match that does not count for the ladder)'); const pn = document.getElementById('pvpNote'); if (pn) pn.append(' ', el('button', { class: 'ghost', onclick: () => { send({ t: 'cancelq' }); pn.classList.add('hidden'); } }, 'Cancel search')); }
   else if (m.t === 'waiting' && window.pvpMode) { Camp.pvpMsg('Room code: ' + m.code + ' — tell your opponent to open Campaign → PvP and join this code. Waiting for them…'); }
   else if (m.t === 'waiting' && m.quick) { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Searching for an opponent…'; $('#btnCancelQ').classList.remove('hidden'); }
   else if (m.t === 'waiting') { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Room code: ' + m.code + ' — share it with your opponent. Waiting for them to join…'; }
@@ -97,14 +98,17 @@ function initUI() {
   $('#btnHelp').onclick = () => $('#helpModal').classList.remove('hidden');
   $('#helpClose').onclick = () => $('#helpModal').classList.add('hidden');
   $('#btnRestart').onclick = () => { { if (window.pvpMode) return Camp.pvpRematch(); const cf = !!window.campFight; if (confirm((session && session.bot ? 'Restart now' : 'Ask your opponent for a rematch') + (cf ? ' of this fight?' : ' with new random teams?'))) send({ t: 'rematch', random: !cf }); } };
+  try { const ts = $('#themeSel'); [['random', 'Random each game'], ...THEME_LIST].forEach(([v, n]) => ts.append(el('option', { value: v }, n))); ts.value = localStorage.getItem('duel_theme') || 'marble'; ts.onchange = () => { try { localStorage.setItem('duel_theme', ts.value); } catch (e) { } }; } catch (e) { }
   $('#btnForfeit').onclick = () => $('#btnMenu').click();
-  $('#btnInfoToggle').onclick = () => { const d = $('#drawer'); d.open = !d.open; if (d.open) d.scrollIntoView({ behavior: 'smooth' }); };
-  try { if (window.matchMedia('(max-width:900px)').matches) $('#drawer').open = false; } catch (e) { }
+  $('#btnInfoToggle').onclick = () => { if (window.matchMedia('(max-width:900px)').matches) { $('.sidebar').classList.add('open'); $('#drawer').open = true; return; } const d = $('#drawer'); d.open = !d.open; if (d.open) d.scrollIntoView({ behavior: 'smooth' }); };
+  $('#btnCloseSide').onclick = () => $('.sidebar').classList.remove('open');
+  
   $('#btnMenu').onclick = () => { if (V && !V.over && !confirm('Leave the duel? You will forfeit.')) return; if (V && !V.over) act({ t: 'resign' }); if (window.campFight || window.pvpMode) return Camp.leaveToCamp(); sessionStorage.removeItem('duel_session'); V = null; show('deck'); renderDeck(); };
   for (const id of ['fSearch', 'fRarity', 'fMp']) $('#' + id).oninput = renderGrid;
   $('#rndTeam').onclick = () => { const L = DATA.figures; deck.figs = []; const nm = {}; while (deck.figs.length < 6) { const f = L[(Math.random() * L.length) | 0]; const b = f.name.split(' ').pop(); if ((nm[b] || 0) >= 2) continue; nm[b] = (nm[b] || 0) + 1; deck.figs.push(f.id); } deck.plates = []; for (const k of Object.keys(PL).sort(() => Math.random() - 0.5)) if (cost() + PL[k].cost <= 6) deck.plates.push(k); renderDeck(); };
   $('#clrTeam').onclick = () => { deck.figs = []; deck.plates = []; renderDeck(); };
   $('#btnBot').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'bot', name: $('#name').value, deck }); };
+  $('#goQuick').onclick = () => { show('deck'); if (deck.figs.length === 6) $('#btnQuick').click(); else toast('Build a team of 6 first, then press Quick match.'); };
   $('#btnQuick').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', name: $('#name').value, deck }); };
   $('#btnCancelQ').onclick = () => { send({ t: 'cancelq' }); $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); };
   $('#btnCreate').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'create', name: $('#name').value, deck }); };
@@ -232,7 +236,7 @@ function render() {
   else { b.className = 'banner ' + (mine ? 'mine' : 'theirs'); b.textContent = (mine ? 'Your turn' : V.players[V.cur].name + "'s turn") + ' · turn ' + V.turn; }
   $('#topinfo').textContent = session ? 'Room ' + session.code : '';
   drawHud(me, opp);
-  drawBoard(); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null);
+  drawBoard(); drawFightPrompt(mine); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null);
   const L = $('#log'); L.innerHTML = ''; V.log.forEach(e => L.append(el('div', {}, e.msg))); L.scrollTop = L.scrollHeight;
   if (V.over) showEnd();
 }
@@ -241,25 +245,71 @@ function drawHud(me, opp) {
   const side = (i, cls) => { const p = V.players[i]; return el('div', { class: 'hs ' + cls + (V.cur === i && !V.over ? ' on' : '') }, el('div', { class: 'hn' }, p.name + (i === me ? ' (you)' : '')), el('div', { class: 'hc' }, p.clock == null ? '–' : fmt(p.clock))); };
   h.replaceChildren(side(me, 'me'), el('div', { class: 'hturn' }, el('small', {}, 'TURN'), el('b', {}, String(V.turn))), side(opp, 'opp'));
 }
+function drawFightPrompt(mine) {
+  let p = $('#fightPrompt'); if (p) p.remove();
+  if (!(V.phase === 'battleChoice' && mine && V.legal && V.legal.battle)) return;
+  const att = V.figs.find(f => f.uid === (V.pendingAttacker != null ? V.pendingAttacker : -1));
+  p = el('div', { id: 'fightPrompt' }, el('div', { class: 'fp-title' }, '⚔️ Battle time!'), el('div', { class: 'fp-sub' }, 'Your Pokémon is next to an enemy. Attack it, or hold back? (A battle ends your turn.)'),
+    el('div', { class: 'fp-btns' }, ...V.legal.battle.map(u => { const f = V.figs.find(x => x.uid === u); const d = f && f.fid && FIG[f.fid]; return el('button', { class: 'fp-fight', onclick: () => act({ t: 'battle', target: u }) }, d ? img(d) : '', el('span', {}, el('b', {}, 'FIGHT'), el('small', {}, d ? d.name : 'enemy'))); }),
+      el('button', { class: 'fp-skip', onclick: () => act({ t: 'battle', target: 'skip' }) }, el('span', {}, el('b', {}, 'HOLD BACK'), el('small', {}, 'end turn, no fight')))));
+  $('.boardwrap').append(p);
+}
 function dests() { if (!V.legal || ui.sel == null) return []; return V.legal.moves[ui.sel] || []; }
 function plateTargetUids() { if (V.legal && V.legal.choose && ['pickOther', 'pickSwap', 'pickFx'].includes(V.legal.choose.kind)) return V.legal.choose.options; if (!ui.plate || !V.players[V.seat].ownPlates) return []; const T = V.players[V.seat].ownPlates[ui.plate.idx].targets; if (!T) return []; return ui.plate.step === 'a' ? T.a : (T.b || []); }
 
 function previewDests(uid) { clearPreview(); const svg = $('#board'); const ds = (V.legal && V.legal.moves[uid]) || []; ds.forEach(p => { const q = PT(p); if (p === (V.figs.find(x => x.uid === uid) || {}).pos) return; svg.insertBefore(sv('circle', { cx: q.x, cy: q.y, r: 22, class: 'hprev', fill: '#ffcb0522', stroke: '#ffcb05', 'stroke-width': 3, 'stroke-dasharray': '5 4' }), svg.querySelector('g')); }); }
 function clearPreview() { document.querySelectorAll('#board .hprev').forEach(e => e.remove()); }
 function koFlash(text) { const bw = document.querySelector('.boardwrap'); if (!bw) return; const b = $('#board'); b.classList.remove('shake'); void b.getBoundingClientRect(); b.classList.add('shake'); const pop = el('div', { class: 'kopop' }, text); bw.append(pop); setTimeout(() => pop.remove(), 1500); }
+function curTheme() {
+  let t = 'marble';
+  try { const cf = window.campFight; const m = cf && /^c\d+/.exec(String(cf.id || '')); if (m && THEME_BY_CH[m[0]]) t = THEME_BY_CH[m[0]]; else { const s = localStorage.getItem('duel_theme') || 'marble'; t = s === 'random' ? THEME_LIST[(String((session && session.code) || V.turn0 || 'x').split('').reduce((h, c) => h + c.charCodeAt(0), 0)) % THEME_LIST.length][0] : s; } } catch (e) { }
+  const g = $('#game'); if (g) g.style.setProperty('--room', THEME_ROOM[t] || '#2a160b');
+  return t;
+}
+function drawSlab(svg, defs) {
+  const lg = (id, stops, a) => defs.append(sv('linearGradient', Object.assign({ id, x1: 0, y1: 0, x2: 0, y2: 1 }, a || {}), ...stops.map(([o, col, op]) => sv('stop', { offset: o, 'stop-color': col, 'stop-opacity': op == null ? 1 : op }))));
+  const rg = (id, stops, a) => defs.append(sv('radialGradient', Object.assign({ id }, a || {}), ...stops.map(([o, col, op]) => sv('stop', { offset: o, 'stop-color': col, 'stop-opacity': op == null ? 1 : op }))));
+  lg('slFrame', [[0, '#f4e3b0'], [0.18, '#b98a3c'], [0.5, '#6d4a1c'], [0.82, '#a87a32'], [1, '#3b2610']]);
+  lg('slSurf', [[0, '#0a1020', 0.3], [0.5, '#0a1020', 0.1], [1, '#0a1020', 0.35]]);
+  rg('slLight', [[0, '#ffffff', 0.28], [0.55, '#ffffff', 0.05], [1, '#ffffff', 0]], { cx: 0.5, cy: 0.38, r: 0.62 });
+  rg('slVig', [[0.55, '#000', 0], [1, '#000', 0.6]], { cx: 0.5, cy: 0.5, r: 0.78 });
+  lg('slSheen', [[0, '#fff', 0.2], [0.35, '#fff', 0], [1, '#fff', 0]], { x1: 0, y1: 0, x2: 1, y2: 0.7 });
+  lg('slPadO', [[0, '#ffb347', 0.4], [1, '#ff7a1a', 0.08]]); lg('slPadB', [[0, '#4da3ff', 0.08], [1, '#4da3ff', 0.4]]);
+  defs.append(sv('pattern', { id: 'slTile', width: 44, height: 44, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' },
+    sv('rect', { width: 44, height: 44, fill: 'none' }), sv('path', { d: 'M0 0H44M0 0V44', stroke: '#fff', 'stroke-opacity': 0.07, 'stroke-width': 1.2 }), sv('circle', { cx: 22, cy: 22, r: 1.6, fill: '#fff', 'fill-opacity': 0.09 })));
+  defs.append(sv('pattern', { id: 'slHaz', width: 18, height: 18, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(-45)' }, sv('rect', { width: 9, height: 18, fill: '#fff', 'fill-opacity': 0.14 })));
+  const X = -20, Y = -98, W = 700, H = 830;
+  svg.append(
+    sv('rect', { x: X + 6, y: Y + 12, width: W, height: H, rx: 34, fill: '#000', opacity: 0.45 }),
+    sv('rect', { x: X, y: Y, width: W, height: H, rx: 30, fill: 'url(#slFrame)' }),
+    sv('rect', { x: X + 11, y: Y + 11, width: W - 22, height: H - 22, rx: 22, fill: '#1a0f06' }),
+    sv('rect', { x: X + 15, y: Y + 15, width: W - 30, height: H - 30, rx: 19, fill: 'none', stroke: '#ffe9a8', 'stroke-opacity': 0.35, 'stroke-width': 1.5 }),
+    sv('rect', { x: X + 18, y: Y + 18, width: W - 36, height: H - 36, rx: 16, fill: 'url(#slSurf)' }),
+    sv('rect', { x: X + 18, y: Y + 18, width: W - 36, height: H - 36, rx: 16, fill: 'url(#slTile)' }),
+    sv('rect', { x: X + 18, y: Y + 18, width: W - 36, height: H - 36, rx: 16, fill: 'url(#slLight)' }),
+    sv('rect', { x: X + 18, y: Y + 18, width: W - 36, height: H - 36, rx: 16, fill: 'url(#slVig)' }),
+    sv('rect', { x: X + 18, y: Y + 18, width: W - 36, height: H - 36, rx: 16, fill: 'none', stroke: '#000', 'stroke-opacity': 0.55, 'stroke-width': 5 }));
+  // bench trays + centre line
+  [[-98, 70], [680, 70]].forEach(([ty, th]) => svg.append(sv('rect', { x: 14, y: ty + 4, width: 632, height: th, rx: 18, fill: '#000', 'fill-opacity': 0.28, stroke: '#fff', 'stroke-opacity': 0.12, 'stroke-width': 2 })));
+  const mid = PT('I01'); svg.append(sv('line', { x1: -4, y1: mid.y, x2: 664, y2: mid.y, stroke: '#fff', 'stroke-opacity': 0.12, 'stroke-width': 2, 'stroke-dasharray': '4 10' }));
+  // goal pads
+  ['G0', 'G1'].forEach(g => { const q = PT(g); const mine = g === BOARD.goals[V.seat]; const top = q.y < 300; const y0 = top ? 8 : q.y - 52;
+    svg.append(sv('rect', { x: q.x - 92, y: y0, width: 184, height: 112, rx: 26, fill: `url(#${mine ? 'slPadO' : 'slPadB'})`, stroke: mine ? '#ffb347' : '#53a8ff', 'stroke-opacity': 0.6, 'stroke-width': 3 }), sv('rect', { x: q.x - 92, y: y0, width: 184, height: 112, rx: 26, fill: 'url(#slHaz)' })); });
+}
 function drawBoard() {
   planAnims();
   const svg = $('#board'); svg.innerHTML = ''; const defs = sv('defs'); svg.append(defs);
-  defs.append(sv('filter', { id: 'marble', x: '0', y: '0', width: '100%', height: '100%' }, sv('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.012 0.02', numOctaves: 4, seed: 7, result: 'n' }), sv('feColorMatrix', { in: 'n', type: 'matrix', values: '0 0 0 0 0.62  0 0 0 0 0.66  0 0 0 0 0.72  0.9 0.9 0.9 0 -0.55' })),
-    sv('filter', { id: 'glow', filterUnits: 'userSpaceOnUse', x: -50, y: -20, width: 760, height: 715 }, sv('feGaussianBlur', { stdDeviation: 3, result: 'b' }), sv('feMerge', {}, sv('feMergeNode', { in: 'b' }), sv('feMergeNode', { in: 'SourceGraphic' }))),
-    sv('radialGradient', { id: 'vig', cx: '50%', cy: '50%', r: '75%' }, sv('stop', { offset: '0.6', 'stop-color': '#000', 'stop-opacity': 0 }), sv('stop', { offset: '1', 'stop-color': '#1a2a4a', 'stop-opacity': 0.35 })),
+  defs.append(
+    sv('filter', { id: 'glow', filterUnits: 'userSpaceOnUse', x: -50, y: -150, width: 760, height: 950 }, sv('feGaussianBlur', { stdDeviation: 3, result: 'b' }), sv('feMerge', {}, sv('feMergeNode', { in: 'b' }), sv('feMergeNode', { in: 'SourceGraphic' }))),
+    sv('radialGradient', { id: 'nodeG', cx: 0.4, cy: 0.35, r: 0.8 }, sv('stop', { offset: 0, 'stop-color': '#fff' }), sv('stop', { offset: 1, 'stop-color': '#b8c4e4' })),
     sv('radialGradient', { id: 'gOrange' }, sv('stop', { offset: '0', 'stop-color': '#ffd27a' }), sv('stop', { offset: '0.55', 'stop-color': '#ff9a2e' }), sv('stop', { offset: '1', 'stop-color': '#ff7a0000' })),
     sv('radialGradient', { id: 'gBlue' }, sv('stop', { offset: '0', 'stop-color': '#bfe4ff' }), sv('stop', { offset: '0.55', 'stop-color': '#3d9bff' }), sv('stop', { offset: '1', 'stop-color': '#2a6cff00' })));
-  svg.append(sv('rect', { x: -30, y: 0, width: 720, height: 675, fill: '#c9ced6' }), sv('rect', { x: -30, y: 0, width: 720, height: 675, filter: 'url(#marble)', opacity: 0.9 }),
-    sv('rect', { x: -30, y: 0, width: 720, height: 675, fill: 'url(#vig)' }),
-    sv('line', { x1: -16, y1: 30, x2: 676, y2: 30, stroke: '#f2b705', 'stroke-width': 5, 'stroke-linecap': 'round', filter: 'url(#glow)' }), sv('line', { x1: -16, y1: 640, x2: 676, y2: 640, stroke: '#f2b705', 'stroke-width': 5, 'stroke-linecap': 'round', filter: 'url(#glow)' }));
+  paintTheme(curTheme(), sv, defs, svg, { x: -30, y: -130, w: 720, h: 910 });
+  drawSlab(svg, defs);
+  svg.append(
+    sv('line', { x1: -4, y1: 30, x2: 664, y2: 30, stroke: '#f2b705', 'stroke-opacity': 0.75, 'stroke-width': 4, 'stroke-dasharray': '14 8', 'stroke-linecap': 'round', filter: 'url(#glow)' }), sv('line', { x1: -4, y1: 640, x2: 664, y2: 640, stroke: '#f2b705', 'stroke-opacity': 0.75, 'stroke-width': 4, 'stroke-dasharray': '14 8', 'stroke-linecap': 'round', filter: 'url(#glow)' }));
   const seen = new Set();
-  for (const a in BOARD.adj) for (const b of BOARD.adj[a]) { const k = [a, b].sort().join('|'); if (seen.has(k)) continue; seen.add(k); const A = PT(a), Bp = PT(b); svg.append(sv('line', { x1: A.x, y1: A.y, x2: Bp.x, y2: Bp.y, stroke: '#ffffff', 'stroke-width': 4.5, 'stroke-linecap': 'round', filter: 'url(#glow)', opacity: 0.95 })); }
+  for (const a in BOARD.adj) for (const b of BOARD.adj[a]) { const k = [a, b].sort().join('|'); if (seen.has(k)) continue; seen.add(k); const A = PT(a), Bp = PT(b); const ln = (w, s, o, f) => sv('line', { x1: A.x, y1: A.y, x2: Bp.x, y2: Bp.y, stroke: s, 'stroke-width': w, 'stroke-linecap': 'round', opacity: o, filter: f }); svg.append(ln(13, '#000', 0.4), ln(8, '#dfe8ff', 1, 'url(#glow)'), ln(3.5, '#ffffff', 1)); }
   const choose = V.legal && V.legal.choose;
   const D = new Set(choose ? (['pickOther', 'pickSwap', 'pickFx'].includes(choose.kind) ? [] : choose.options) : (V.legal && V.phase === 'main' ? dests() : []));
   const goalMine = BOARD.goals[V.seat];
@@ -271,19 +321,21 @@ function drawBoard() {
   const figAt = {}; V.figs.filter(f => f.loc === 'field').forEach(f => (figAt[f.pos] = f));
   for (const p of BOARD.points) {
     const q = PT(p); const isE = entryMine.includes(p), isO = entryOpp.includes(p);
-    svg.append(sv('circle', { cx: q.x, cy: q.y, r: isE || isO ? 20 : 9, fill: isE || isO ? '#ffffff55' : '#ffffffcc', stroke: '#fff', 'stroke-width': isE || isO ? 4 : 3, filter: 'url(#glow)' }));
+    svg.append(sv('circle', { cx: q.x, cy: q.y + 3, r: isE || isO ? 21 : 12, fill: '#000', opacity: 0.4 }), sv('circle', { cx: q.x, cy: q.y, r: isE || isO ? 20 : 11, fill: isE || isO ? '#ffffff55' : 'url(#nodeG)', stroke: isE || isO ? '#fff' : '#8fa0c8', 'stroke-width': isE || isO ? 4 : 2.5, filter: isE || isO ? 'url(#glow)' : null }));
+    if (!(isE || isO)) svg.append(sv('circle', { cx: q.x - 3, cy: q.y - 3, r: 3, fill: '#fff', opacity: 0.9 }));
     if (isE || isO) svg.append(sv('circle', { cx: q.x, cy: q.y, r: 11, fill: 'none', stroke: isE ? '#2f7de1' : '#e0453a', 'stroke-width': 3 }), sv('circle', { cx: q.x, cy: q.y, r: 4, fill: isE ? '#2f7de1' : '#e0453a' }));
   }
   const tgSet = new Set(V.legal && V.phase === 'battleChoice' ? V.legal.battle : []); if (choose && ['pickOther', 'pickSwap', 'pickFx'].includes(choose.kind)) choose.options.forEach(u => tgSet.add(u)); else if (choose) tgSet.add(choose.uid);
   const ptg = new Set(plateTargetUids()); const now = performance.now(); const fresh = Object.keys(seenBadges).length > 0;
-  for (const f of Object.values(figAt)) {
-    const q = PT(f.pos); const d = FIG[f.fid]; const mineF = f.owner === V.seat; const sel = ui.sel === f.uid;
+  const drawPiece = (f, q, onBench) => {
+    const d = FIG[f.fid]; const mineF = f.owner === V.seat; const sel = ui.sel === f.uid;
     const g = sv('g', { style: 'cursor:pointer', onclick: () => clickFig(f), onmouseenter: () => { ui.info = f.fid; infoCard($('#info'), d); if (mineF && V.legal && V.phase === 'main' && !ui.plate && ui.sel !== f.uid) previewDests(f.uid); }, onmouseleave: clearPreview });
     const cid = 'cp' + f.uid; defs.append(sv('clipPath', { id: cid }, sv('circle', { cx: q.x, cy: q.y, r: 29 })));
     g.append(sv('ellipse', { cx: q.x, cy: q.y + 30, rx: 36, ry: 11, fill: '#0006' }), sv('circle', { cx: q.x, cy: q.y, r: 34, fill: mineF ? '#1e5fd0' : '#c8372d', stroke: sel ? '#ffe45c' : (mineF ? '#7cb8ff' : '#ff9a90'), 'stroke-width': sel ? 7 : 4 }), sv('circle', { cx: q.x, cy: q.y, r: 30, fill: '#10172b' }));
     g.append(sv('text', { x: q.x, y: q.y + 6, 'text-anchor': 'middle', fill: '#8fa0c4', 'font-size': 20 }, d.name[0]));
     const im = sv('image', { href: d.picture, x: q.x - 29, y: q.y - 29, width: 58, height: 58, 'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice' }); im.addEventListener('error', () => im.setAttribute('visibility', 'hidden')); g.append(im);
     if (ui.hi && (ui.hi.a === f.uid || ui.hi.d === f.uid)) g.append(sv('circle', { cx: q.x, cy: q.y, r: 45, fill: 'none', stroke: ui.hi.a === f.uid ? '#ffcb05' : '#ff6b6b', 'stroke-width': 5, class: 'dest' }), sv('text', { x: q.x, y: q.y - 50, 'text-anchor': 'middle', 'font-size': 18 }, ui.hi.a === f.uid ? '⚔' : '🛡'));
+    if (V.phase === 'battleChoice' && V.legal && V.legal.battle && V.legal.battle.includes(f.uid)) g.append(sv('circle', { cx: q.x, cy: q.y, r: 46, fill: '#ff2d2d22', stroke: '#ff3b3b', 'stroke-width': 5, class: 'dest' }), sv('text', { x: q.x, y: q.y - 52, 'text-anchor': 'middle', 'font-size': 30, class: 'swordpulse', style: 'paint-order:stroke;stroke:#000;stroke-width:3px' }, '⚔️'));
     if (tgSet.has(f.uid) || ptg.has(f.uid)) g.append(sv('circle', { cx: q.x, cy: q.y, r: 41, fill: 'none', stroke: '#ffcb05', 'stroke-width': 4, 'stroke-dasharray': '6 4', class: 'dest' }));
     g.append(sv('circle', { cx: q.x + 27, cy: q.y + 24, r: 13, fill: mineF ? '#2f7de1' : '#e0453a', stroke: '#fff', 'stroke-width': 2.5 }), sv('text', { x: q.x + 27, y: q.y + 30, 'text-anchor': 'middle', fill: '#fff', 'font-size': 17, 'font-weight': 900 }, String(f.mp)), sv('title', {}, 'MP ' + f.mp));
     if (f.wait > 0) g.append(sv('rect', { x: q.x - 38, y: q.y + 22, width: 32, height: 16, rx: 6, fill: '#8a5a00' }), sv('text', { x: q.x - 22, y: q.y + 34, 'text-anchor': 'middle', fill: '#fff', 'font-size': 11 }, 'W' + f.wait));
@@ -298,8 +350,28 @@ function drawBoard() {
     });
     seenBadges[f.uid] = keys;
     svg.append(g);
-    if (activeAnim[f.uid]) playRec(g, activeAnim[f.uid]);
-  }
+    if (!onBench && activeAnim[f.uid]) playRec(g, activeAnim[f.uid]);
+  };
+  // ---- benches + P.C. drawn on the board itself (like the original)
+  const BX = k => 60 + k * 100, BYo = -62, BYm = 716;
+  [[1 - V.seat, BYo, false], [V.seat, BYm, true]].forEach(([si, by, isMe]) => {
+    const bf = V.figs.filter(f => f.owner === si && f.loc === 'bench');
+    for (let k = 0; k < 6; k++) {
+      const f = bf[k]; const x = BX(k);
+      if (!f) { svg.append(sv('circle', { cx: x, cy: by, r: 31, fill: '#ffffff18', stroke: '#fff', 'stroke-width': 4, filter: 'url(#glow)' })); continue; }
+      if (!isMe || f.hidden) { svg.append(sv('circle', { cx: x, cy: by, r: 29, fill: '#fff', stroke: '#10172b', 'stroke-width': 4 }), sv('path', { d: `M${x - 29},${by} A29,29 0 0 1 ${x + 29},${by} Z`, fill: '#e0453a' }), sv('line', { x1: x - 29, y1: by, x2: x + 29, y2: by, stroke: '#10172b', 'stroke-width': 4 }), sv('circle', { cx: x, cy: by, r: 9, fill: '#fff', stroke: '#10172b', 'stroke-width': 4 })); continue; }
+      drawPiece(f, { x, y: by }, true);
+    }
+    const p = V.players[si];
+    svg.append(sv('text', { x: 640, y: (isMe ? 646 : -120), 'text-anchor': 'middle', fill: '#fff', 'font-size': 13, 'font-weight': 800, opacity: 0.9, style: 'paint-order:stroke;stroke:#000a;stroke-width:3px' }, 'P.C.'));
+    [0, 1].forEach(k => {
+      const f = p.pc[k] != null && V.figs.find(x => x.uid === p.pc[k]); const cy = (isMe ? 676 : -92) + k * 54;
+      if (!f || !f.fid) { svg.append(sv('circle', { cx: 640, cy, r: 22, fill: '#00000033', stroke: '#fff', 'stroke-width': 3, 'stroke-dasharray': '4 3' })); return; }
+      const d = FIG[f.fid]; const cid = 'pc' + f.uid; defs.append(sv('clipPath', { id: cid }, sv('circle', { cx: 640, cy, r: 20 })));
+      const g = sv('g', { style: 'cursor:pointer', onclick: () => clickFig(f) }, sv('circle', { cx: 640, cy, r: 24, fill: '#10172b', stroke: ptg.has(f.uid) ? '#ffcb05' : '#8a93a8', 'stroke-width': ptg.has(f.uid) ? 5 : 3 }), sv('image', { href: d.picture, x: 620, y: cy - 20, width: 40, height: 40, 'clip-path': `url(#${cid})`, preserveAspectRatio: 'xMidYMid slice', opacity: 0.6 }), sv('title', {}, d.name + ' (in P.C.)')); svg.append(g);
+    });
+  });
+  for (const f of Object.values(figAt)) drawPiece(f, PT(f.pos), false);
   for (const f of V.figs) if (f.loc !== 'field' && !seenBadges[f.uid]) seenBadges[f.uid] = new Set();
   for (const gh of ghosts) {
     const q = PT(gh.pos), d = FIG[gh.fid]; if (!d) continue; const cid = 'gh' + gh.start + gh.pos; defs.append(sv('clipPath', { id: cid }, sv('circle', { cx: q.x, cy: q.y, r: 29 })));
@@ -307,7 +379,8 @@ function drawBoard() {
     g.style.transformOrigin = `${q.x}px ${q.y}px`; svg.append(g);
     const an = g.animate([{ opacity: 1, transform: 'scale(1) rotate(0deg)' }, { opacity: 0, transform: 'scale(0.3) rotate(25deg)' }], { duration: gh.dur, easing: 'ease-in', fill: 'forwards' }); an.currentTime = performance.now() - gh.start;
   }
-  for (const p of D) { if (p.startsWith('G')) continue; const q = PT(p); svg.append(sv('circle', { cx: q.x, cy: q.y, r: 26, fill: '#ffd83a66', stroke: '#ffcb05', 'stroke-width': 5, class: 'dest', filter: 'url(#glow)', style: 'cursor:pointer', onclick: () => doMove(p) })); }
+  const enemyAt = pt => (BOARD.adj[pt] || []).some(n => V.figs.some(x => x.loc === 'field' && x.pos === n && x.owner !== V.seat));
+  for (const p of D) { if (!p.startsWith('G') && V.phase === 'main' && enemyAt(p)) { const qq = PT(p); svg.append(sv('text', { x: qq.x, y: qq.y - 40, 'text-anchor': 'middle', 'font-size': 26, class: 'swordpulse', style: 'pointer-events:none;paint-order:stroke;stroke:#000;stroke-width:3px' }, '⚔️')); } if (p.startsWith('G')) continue; const q = PT(p); svg.append(sv('circle', { cx: q.x, cy: q.y, r: 26, fill: '#ffd83a66', stroke: '#ffcb05', 'stroke-width': 5, class: 'dest', filter: 'url(#glow)', style: 'cursor:pointer', onclick: () => doMove(p) })); }
   if (V.lockedGoal[V.seat] > 0 || V.lockedGoal[1 - V.seat] > 0) svg.append(sv('text', { x: 342, y: 655, 'text-anchor': 'middle', fill: '#e9b44c', 'font-size': 13 }, V.lockedGoal[V.seat] > 0 ? '🛡 Your goal is blocked for the opponent this turn' : '🛡 Enemy goal is blocked this turn'));
 }
 function clickFig(f) {
@@ -333,10 +406,10 @@ function mineTurnNow() { return V && V.cur === V.seat && !V.over; }
 function drawActions() {
   const a = $('#actions'); a.innerHTML = ''; if (!V.legal || V.over) { a.append(el('span', { class: 'muted' }, V.over ? '' : 'Waiting for the opponent…')); return; }
   if (V.legal.choose) { a.append(el('div', { class: 'notice' }, 'Click a glowing point to place it. '), el('button', { onclick: () => act({ t: 'choose', to: null }) }, ['pickOther', 'pickSwap', 'pickFx'].includes(V.legal.choose.kind) ? 'Skip' : V.legal.choose.kind === 'evade' ? 'Fight normally' : 'Stay where it is')); return; }
-  if (V.phase === 'battleChoice') { if (mineTurnNow()) a.append(el('div', {}, 'Click a highlighted enemy to battle (a battle ends your turn).'), el('button', { class: 'primary', onclick: () => act({ t: 'battle', target: 'skip' }) }, 'Don’t battle · end turn')); else a.append('Waiting…'); return; }
+  if (V.phase === 'battleChoice') { if (!mineTurnNow()) a.append('Waiting…'); else a.append(el('div', { class: 'muted small' }, 'Choose FIGHT or HOLD BACK above.')); return; }
   const me = V.players[V.seat];
   if (V.legal.loyalty && V.legal.loyalty.length && !V.moved) a.append(el('div', { class: 'row' }, ...V.legal.loyalty.map(u => { const f = V.figs.find(x => x.uid === u); return el('button', { class: 'platecard', style: '--pc:#f78fb3', title: 'Loyalty: move it to your bench, then you can use it again right away (clears its Wait).', onclick: () => act({ t: 'loyalty', uid: u }) }, el('span', { class: 'pc-ic' }, '🐾'), el('span', { class: 'pc-nm' }, 'Loyalty: ' + FIG[f.fid].name + ' → bench')); })));
-  a.append(el('div', { class: 'muted small' }, '1) Optional plate  2) Pick a Pokémon (board or bench), then a glowing destination.'));
+  if (V.turn <= 3) a.append(el('div', { class: 'howto' }, el('b', {}, 'How to play: '), '① (optional) use a plate  ② tap one of your Pokémon  ③ tap a glowing point to move. ', el('span', { class: 'swordnote' }, '⚔️ on a point = you can start a battle from there.')));
   if (ui.plate) a.append(el('div', { class: 'notice' }, 'Plate: choose a ' + (ui.plate.step === 'a' ? 'target' : 'bench Pokémon') + ' (highlighted). ', el('button', { onclick: () => { ui.plate = null; render(); } }, 'Cancel')));
   const row = el('div', { class: 'row' });
   for (const p of me.ownPlates) {
@@ -420,16 +493,22 @@ function playBattle(m) {
 function startBattleOverlay(m, A, D, post, b, o) {
   o.classList.remove('hidden');
   const fa = FIG[A.fid], fd = FIG[D.fid]; SFX.play('spin');
-  const big = window.innerWidth > 900, WS = big ? Math.min(380, Math.floor(window.innerHeight * 0.5)) : 190; const rc = o2 => (o2.owner === post.seat ? '#3d8bff' : '#ff4a4a');
-  const wa = animWheel(b.aw, WS, false, rc(A)), wd = animWheel(b.dw, WS, true, rc(D));
-  const resA = el('div', { class: 'bres' }), resD = el('div', { class: 'bres' }), mid = el('div', { class: 'bmid' });
-  const side = (f, who, w, resEl, name) => el('div', { class: 'bside ' + (who.owner === post.seat ? 'sb' : 'sr') }, el('div', { class: 'bbanner' }, el('span', { class: 'bname' }, name), el('span', { class: 'bgauge' }, ((post.players[who.owner] || {}).gauge || 0) + '%')), el('div', { class: 'bfig' }, img(f), el('div', { class: 'bfn' }, f.name)), w.svg, w.lbl, resEl);
+  const rc = o2 => (o2.owner === post.seat ? '#3d8bff' : '#ff4a4a');
+  const wa = animWheel(b.aw, 400, false, rc(A)), wd = animWheel(b.dw, 400, true, rc(D));
+  const resA = el('div', { class: 'bres' }), resD = el('div', { class: 'bres' }), mid = el('div', { class: 'bmid bcenter' });
   const nameA = post.players[A.owner].name, nameD = post.players[D.owner].name;
-  mid.append(el('div', { class: 'vs' }, 'VS'), el('div', { class: 'small' }, `${nameA}'s ${fa.name} moved next to ${nameD}'s ${fd.name}`), el('div', { class: 'bresult' }), el('ul', { class: 'bevents' }));
-  o.append(el('div', { class: 'battle' }, side(fa, A, wa, resA, nameA + (A.owner === post.seat ? ' (you)' : '')), mid, side(fd, D, wd, resD, nameD + (D.owner === post.seat ? ' (you)' : ''))), el('div', { class: 'small muted', style: 'position:absolute;bottom:14px' }, 'click to skip'));
+  const mineIsA = A.owner === post.seat; const M = mineIsA ? { f: fa, w: wa, res: resA, n: nameA } : { f: fd, w: wd, res: resD, n: nameD }, O = mineIsA ? { f: fd, w: wd, res: resD, n: nameD } : { f: fa, w: wa, res: resA, n: nameA };
+  mid.append(el('div', { class: 'bresult' }), el('ul', { class: 'bevents' }));
+  o.append(el('div', { class: 'bstage' },
+    el('div', { class: 'bw top' }, O.w.svg), el('div', { class: 'bw bot' }, M.w.svg),
+    el('div', { class: 'bbeam' }),
+    el('div', { class: 'bcorner tl' }, el('div', { class: 'bwho' }, O.n + ' · ' + O.f.name), O.res, O.w.lbl),
+    el('div', { class: 'bcorner br' }, M.res, M.w.lbl),
+    el('div', { class: 'bport' }, img(M.f), el('div', { class: 'bpn' }, M.n + (' (you)') + ' · ' + M.f.name)),
+    mid), el('div', { class: 'small muted bskip' }, 'tap to skip'));
   wa.run(); wd.run();
   let stage = 0, timers = [];
-  const fill = (r, s) => { r.innerHTML = ''; r.append(el('div', { class: 'mv ' + CLS[s.color] }, (s.z ? 'Z · ' : '') + s.seg), el('div', { class: 'small ' + CLS[s.color] }, s.color), el('div', { class: 'dm ' + CLS[s.color] }, (s.color === 'White' || s.color === 'Gold') ? s.dmg : s.color === 'Purple' && s.stars ? '★'.repeat(s.stars) : ''), s.notes ? el('div', { class: 'small muted' }, s.notes) : ''); };
+  const fill = (r, s) => { r.innerHTML = ''; r.append(el('div', { class: 'dm ' + CLS[s.color] }, (s.color === 'White' || s.color === 'Gold') ? s.dmg : s.color === 'Purple' && s.stars ? '★'.repeat(s.stars) : s.color === 'Red' ? '✕' : s.color === 'Blue' ? '🛡' : ''), el('div', { class: 'mv ' + CLS[s.color] }, (s.z ? 'Z · ' : '') + s.seg), s.notes ? el('div', { class: 'bnote' }, s.notes) : ''); };
   const reveal = () => {
     if (stage >= 1) return; stage = 1; wa.finishNow(); wd.finishNow(); fill(resA, b.attacker); fill(resD, b.defender);
     const t = ((b.aKO ? fa.name + ' is knocked out! ' : '') + (b.dKO ? fd.name + ' is knocked out!' : '')) || b.text || 'No knock-out'; mid.querySelector('.bresult').textContent = t;
