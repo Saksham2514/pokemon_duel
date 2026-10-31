@@ -17,7 +17,7 @@ try { const d = JSON.parse(localStorage.getItem('duel_deck') || 'null'); if (d) 
 // ------------------------------------------------------------ boot
 fetch('/api/data').then(r => r.json()).then(d => { DATA = d; d.figures.forEach(f => (FIG[f.id] = f)); PL = d.plates; BOARD = d.board; deck.figs = deck.figs.filter(i => FIG[i]); deck.plates = deck.plates.filter(k => PL[k]); initUI(); if (window.Camp) Camp.init(); connect(); }).catch(e => { $('#conn').textContent = 'Failed to load data: ' + e; });
 
-function show(screen) { if (screen === 'deck' && window.Camp && Camp.lobbyPanel) { try { Camp.lobbyPanel($('#lobbyOwn')); } catch (e) { } } for (const s of ['lobby', 'camp', 'deck', 'draft', 'game']) $('#' + s).classList.toggle('hidden', s !== screen); $('#btnMenu').classList.toggle('hidden', screen !== 'game'); $('#btnRestart').classList.toggle('hidden', screen !== 'game'); }
+function show(screen) { try { document.body.scrollTop = 0; document.documentElement.scrollTop = 0; } catch (e) { } if (screen === 'deck' && window.Camp && Camp.lobbyPanel) { try { Camp.lobbyPanel($('#lobbyOwn')); } catch (e) { } } for (const s of ['lobby', 'camp', 'deck', 'draft', 'game']) $('#' + s).classList.toggle('hidden', s !== screen); $('#btnMenu').classList.toggle('hidden', screen !== 'game'); $('#btnRestart').classList.toggle('hidden', screen !== 'game'); }
 function saveDeck() { try { localStorage.setItem('duel_deck', JSON.stringify(deck)); localStorage.setItem('duel_name', $('#name').value); } catch (e) { } }
 
 function connect() {
@@ -93,7 +93,11 @@ function onMsg(m) {
   else if (m.t === 'err') { if (window.pvpMode && Camp.pvpMsg(m.msg, true)) return; toast(m.msg); if (m.fatal) { sessionStorage.removeItem('duel_session'); } $('#deckErr').textContent = m.msg; }
   else if (m.t === 'chat') { const c = $('#chat'); c.append(el('div', {}, el('b', {}, m.from + ': '), m.text)); c.scrollTop = c.scrollHeight; }
 }
-let toastT; function toast(msg) { const b = $('#turnBanner'); if (!b) return; b.textContent = '⚠ ' + msg; clearTimeout(toastT); toastT = setTimeout(() => render(), 2200); }
+let toastT; function toast(msg) {
+  if (/not your turn|no battle pending|not allowed|^not now/i.test(String(msg))) return; // harmless races, no need to interrupt the player
+  let b = $('#toastBox'); if (!b) { b = el('div', { id: 'toastBox' }); document.body.append(b); }
+  b.textContent = msg; b.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => b.classList.remove('show'), 2600);
+}
 
 // ------------------------------------------------------------ lobby / deck builder
 function initUI() {
@@ -550,22 +554,27 @@ function confetti(box, n) {
   for (let i = 0; i < n; i++) { const p = el('i', { class: 'cf' }); p.style.cssText = `left:${Math.random() * 100}%;background:${cols[i % cols.length]};animation-delay:${Math.random() * 2.5}s;animation-duration:${2.6 + Math.random() * 2.4}s;transform:rotate(${Math.random() * 360}deg);width:${6 + Math.random() * 6}px;height:${10 + Math.random() * 8}px`; box.append(p); }
 }
 // ---- Draft screen
-const DRC = { C: '#9aa3b5', UC: '#58c26b', R: '#4aa8ff', EX: '#c58cf2', UX: '#ffcb05' }; let drState = { picks: [], opp: 0 }, drTimerId = null;
+const DRC = { C: '#9aa3b5', UC: '#58c26b', R: '#4aa8ff', EX: '#c58cf2', UX: '#ffcb05' }; let drState = { picks: [], opp: 0 }, drTimerId = null, drCountT = null;
 function drLock(msg) { $('#drOpts').querySelectorAll('button').forEach(b => (b.disabled = true)); const s = $('#drStatus'); s.classList.remove('hidden'); s.textContent = msg; }
 function drawDraftTeam() { const t = $('#drTeam'); t.innerHTML = ''; for (let i = 0; i < 6; i++) { const id = drState.picks[i]; const f = id != null ? FIG[id] : null; t.append(f ? el('div', { class: 'drslot', style: '--rc:' + DRC[f.rarity], title: f.name, onclick: () => infoCard($('#drInfo'), f) }, img(f), el('span', {}, f.name)) : el('div', { class: 'drslot empty' }, String(i + 1))); } }
+function drSteps(round) { const t = $('#drSteps'); t.innerHTML = ''; for (let i = 0; i < 6; i++) t.append(el('i', { class: i < round ? 'done' : i === round ? 'now' : '' })); }
+let drLastKey = null;
 function drawDraft(m) {
-  show('draft'); window.scrollTo(0, 0); drState = { picks: m.picks || [], opp: m.oppPicks || 0 }; $('#drReveal').classList.add('hidden'); $('#drOpts').classList.remove('hidden');
+  const key = m.round + ':' + m.options.join(','); const same = key === drLastKey && !$('#draft').classList.contains('hidden'); drLastKey = key;
+  if (same) { drState.picks = m.picks || drState.picks; drState.opp = m.oppPicks || drState.opp; $('#drOpp').textContent = 'Opponent has picked ' + drState.opp + ' of 6.'; if (m.picked) drLock('Pick locked in – waiting for your opponent…'); clearInterval(drTimerId); const tk = () => { const s2 = Math.max(0, Math.ceil((m.deadline - Date.now()) / 1000)); $('#drTimer').textContent = '⏱ ' + s2 + 's'; $('#drTimer').classList.toggle('low', s2 <= 7); }; tk(); drTimerId = setInterval(tk, 500); return; }
+  show('draft'); requestAnimationFrame(() => { window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0; }); drSteps(m.round); $('#drHow').classList.toggle('hidden', m.round >= 2); drState = { picks: m.picks || [], opp: m.oppPicks || 0 }; $('#drReveal').classList.add('hidden'); $('#drOpts').classList.remove('hidden');
   $('#drTitle').textContent = '🃏 Draft – pick ' + (m.round + 1) + ' of ' + m.total; $('#drSub').textContent = 'Both players are offered 2 ' + ({ C: 'Common', UC: 'Uncommon', R: 'Rare', EX: 'EX', UX: 'Ultra' }[m.rarity] || '') + ' Pokémon this round. Pick one – your opponent picks at the same time, and teams are revealed at the end.';
   const box = $('#drOpts'); box.innerHTML = ''; $('#drStatus').classList.add('hidden'); $('#drOpp').textContent = 'Opponent has picked ' + drState.opp + ' of 6.';
   m.options.forEach((id, idx) => { const f = FIG[id];
     box.append(el('div', { class: 'dcard', style: '--rc:' + DRC[f.rarity] }, el('div', { class: 'dtop' }, img(f), el('div', {}, el('b', {}, f.name), el('div', { class: 'small' }, f.rarity + ' · MP ' + f.mp), el('div', { class: 'tags' }, f.types.map(t => el('span', {}, t))))),
       wheelSvg(f.segs), (f.ability && !/^none/i.test(f.ability)) ? el('div', { class: 'small dab' }, el('b', {}, 'Ability: '), f.ability) : el('div', { class: 'small muted' }, 'No ability'),
-      el('button', { class: 'primary', onclick: () => { send({ t: 'draftPick', idx }); drLock('Pick locked in – waiting for your opponent…'); } }, 'Pick ' + f.name))); });
+      el('button', { class: 'primary', onclick: ev => { send({ t: 'draftPick', idx }); drLock('Pick locked in – waiting for your opponent…'); const cards = [...$('#drOpts').children]; cards.forEach((c, k) => c.classList.add(k === idx ? 'picked' : 'dim')); } }, 'Pick ' + f.name))); });
   if (m.picked) drLock('Pick locked in – waiting for your opponent…');
   drawDraftTeam(); clearInterval(drTimerId); const tick = () => { const s = Math.max(0, Math.ceil((m.deadline - Date.now()) / 1000)); $('#drTimer').textContent = '⏱ ' + s + 's'; $('#drTimer').classList.toggle('low', s <= 7); }; tick(); drTimerId = setInterval(tick, 500);
 }
 function drDone(m) {
-  clearInterval(drTimerId); $('#drTimer').textContent = ''; $('#drOpts').classList.add('hidden'); $('#drStatus').classList.add('hidden'); $('#drTitle').textContent = '🃏 Teams revealed!'; $('#drSub').textContent = 'The duel starts in a moment…'; drState.picks = m.mine; drawDraftTeam();
+  drLastKey = null; drSteps(6); $('#drHow').classList.add('hidden');
+  clearInterval(drTimerId); $('#drTimer').textContent = ''; $('#drOpts').classList.add('hidden'); $('#drStatus').classList.add('hidden'); $('#drTitle').textContent = '🃏 Teams revealed!'; $('#drSub').textContent = ''; { let n = 4; $('#drTimer').innerHTML = ''; const c = el('span', { class: 'drcount' }); $('#drTimer').append(c); const tkc = () => { c.textContent = 'Duel starts in ' + n + '…'; if (n-- > 0) drCountT = setTimeout(tkc, 1000); }; clearTimeout(drCountT); tkc(); } drState.picks = m.mine; drawDraftTeam();
   const r = $('#drReveal'); r.classList.remove('hidden'); r.innerHTML = ''; r.append(el('h4', {}, 'Opponent’s team'), el('div', { class: 'drteam' }, ...m.theirs.map(id => { const f = FIG[id]; return el('div', { class: 'drslot', style: '--rc:' + DRC[f.rarity], title: f.name }, img(f), el('span', {}, f.name)); })), el('div', { class: 'small muted' }, 'Plates were dealt at random (' + (m.plates || []).map(k => (PL[k] || {}).name || k).join(', ') + ').'));
 }
 function showEnd() {

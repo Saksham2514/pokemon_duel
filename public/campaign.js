@@ -148,7 +148,7 @@
     const code = el('input', { placeholder: 'ROOM CODE', maxlength: 4, style: 'text-transform:uppercase;width:110px' });
     const go = async t => { if (!ok || !auth) return; await flush(); window.pvpMode = true; const d = curDeck(); window.pvpLast = { auth: auth.token, deck: { figs: d.figs.slice(), plates: d.plates.slice() } }; note.classList.add('hidden'); send({ t, owned: true, auth: auth.token, name: auth.name, code: code.value, deck: window.pvpLast.deck }); };
     body.append(el('div', { class: 'panel' }, el('h3', {}, '🤝 Collection PvP'), el('div', { class: 'muted' }, 'Duel another signed-in player using only the Pokémon and plates you own (your active deck). The server checks your collection. Wins and losses go on your PvP record; coins, chests and progress are not affected.'),
-      el('div', { class: 'row gap', style: 'margin-top:10px' }, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('create') }, 'Create room'), code, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('quick') }, '⚡ Quick match'), el('button', { disabled: ok ? null : '', onclick: () => go('join') }, 'Join room')), note), rec);
+      el('div', { class: 'row gap', style: 'margin-top:10px' }, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('create') }, 'Create room'), code, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('quick') }, '⚡ Quick match'), el('button', { disabled: ok ? null : '', onclick: () => go('join') }, 'Join room')), casualRow(note), note), rec);
   }
   function deckBar(body) {
     const d = curDeck(); const ok = deckOk(d);
@@ -455,6 +455,18 @@
     window.campFight = null; done = false; show('camp'); render();
   }
 
+  function casualRow(note, noCancel) {
+    const q = (label, title, msg) => (opts) => el('button', { class: 'primary', title, onclick: () => { window.pvpMode = false; if (note) { note.className = 'notice lobbyNote' + (note.id ? '' : ''); note.textContent = msg; } send(opts.t === 'draftBot' ? { t: 'draftBot', name: auth.name } : { t: 'quick', ...opts, name: auth.name }); } }, label);
+    const wait = 'Searching for an opponent… a bot joins in a few seconds if nobody is found. Casual: no ladder, no rewards.';
+    return el('div', { style: 'margin-top:10px' }, el('div', { class: 'small muted' }, 'Casual modes – random or drafted teams, not limited to your collection; no ladder points and no rewards:'),
+      el('div', { class: 'row gap', style: 'margin-top:6px' },
+        q('🃏 Draft match', 'Pick 1 of 2 Pokémon for each of 6 slots, then duel', wait)({ draft: true }),
+        q('Draft vs bot', 'Draft practice against a bot', 'Starting draft…')({ t: 'draftBot' }),
+        q('🌀 Crazy match', 'Random teams; every 10–14 turns something random changes for both players', wait)({ crazy: true }),
+        q('🌀 Crazy Draft', 'Draft first, then Crazy Mode', wait)({ crazy: true, draft: true }),
+        q('🎲 Random-deck match', 'Random teams for both players', wait)({ random: true }),
+        noCancel ? '' : el('button', { class: 'ghost', onclick: () => { send({ t: 'cancelq' }); if (note) note.classList.add('hidden'); } }, 'Cancel search')));
+  }
   async function lobbyPanel(host) {
     host.innerHTML = ''; if (!auth) { host.append(el('div', { class: 'panel mini small muted' }, '🔐 Sign in via Campaign to play PvP with your own collection (decks you built from cards you own).')); return; }
     const box = el('div', { class: 'panel mini' }, el('b', {}, '🎒 Play PvP with my collection'), el('div', { class: 'small muted' }, 'Loading your decks…')); host.append(box);
@@ -469,8 +481,8 @@
     const go = t => { const d = sv2.decks[+sel.value]; const nm = auth.name; window.pvpMode = true; window.pvpLast = { auth: auth.token, deck: { figs: d.figs.slice(), plates: (d.plates || []).slice() } }; note.classList.add('hidden'); send({ t, owned: true, auth: auth.token, name: nm, code: code.value, deck: window.pvpLast.deck }); };
     const cancel = el('button', { class: 'ghost', onclick: () => { send({ t: 'cancelq' }); note.classList.add('hidden'); } }, 'Cancel search');
     box.lastChild.replaceWith(el('div', { class: 'small muted' }, 'Uses only cards you own; counts on the PvP ladder (bot fill-ins do not). Quick match pairs with another signed-in player.'));
-    box.append(sel, el('div', { class: 'row gap', style: 'margin-top:6px' }, el('button', { class: 'primary', onclick: () => go('quick') }, '⚡ Quick match'), el('button', { class: 'primary', onclick: () => go('create') }, 'Create room'), el('button', { class: 'primary', title: 'Random teams for both players – not limited to your collection, not on the ladder', onclick: () => { window.pvpMode = false; note.classList.add('hidden'); send({ t: 'quick', random: true, name: auth.name }); } }, '🎲 Random-deck match')),
-      el('div', { class: 'row gap', style: 'margin-top:6px' }, code, el('button', { onclick: () => go('join') }, 'Join room'), cancel), note);
+    box.append(sel, el('div', { class: 'row gap', style: 'margin-top:6px' }, el('button', { class: 'primary', onclick: () => go('quick') }, '⚡ Quick match'), el('button', { class: 'primary', onclick: () => go('create') }, 'Create room'), ),
+      el('div', { class: 'row gap', style: 'margin-top:6px' }, code, el('button', { onclick: () => go('join') }, 'Join room'), cancel), casualRow(note, true), note);
   }
   window.Camp = {
     lobbyPanel,

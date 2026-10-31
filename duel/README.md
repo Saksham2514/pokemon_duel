@@ -179,6 +179,12 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.57 — New modes for signed-in players
+The Campaign → PvP tab and the lobby's "Play PvP with my collection" panel now also have Draft match, Draft vs bot, Crazy match, Crazy Draft and Random-deck match (casual: no ladder, no rewards, no collection needed), with a searching note and Cancel search.
+
+## v10.56 — Draft polish + calmer alerts
+Draft screen: always-visible "How the Draft works" steps, sticky header with 6-step progress bar and timer, picked card is highlighted (the other dims), cards fade in smoothly, no re-render flicker when the server repeats a round, empty boxes removed, a "Duel starts in N…" countdown after the reveal. Fixed the page staying scrolled down when a new screen opened (the page scrolls inside <body>). In-game alerts no longer replace the turn banner: they appear as a small floating message that fades, and harmless race errors ("Not your turn") are ignored.
+
 ## v10.55 — Crazy Mode retuned
 Events now every 10–14 turns (was 4–6) and affect ONE Pokémon per side instead of everything: Ability Swap (borrows another Pokémon's ability, 🌀 badge), Replaced (becomes another Pokémon of the same rarity), Switch Sides (one field Pokémon from each team swap teams in place), Condition (random burn/paralysis/freeze/sleep/poison/confusion on one Pokémon per side), Rally (all Wait cleared). Never the same event twice in a row.
 

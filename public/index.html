@@ -8,7 +8,7 @@
 </head>
 <body>
 <header id="top">
-  <div class="brand"><span class="ball"></span> POKÉMON DUEL <small>web · build v10.55</small></div>
+  <div class="brand"><span class="ball"></span> POKÉMON DUEL <small>web · build v10.57</small></div>
   <div id="topinfo"></div>
   <div class="spacer"></div>
   <button id="btnSnd" class="ghost" title="Sound on/off (M)">🔊</button>
@@ -67,7 +67,9 @@
 
 <main id="draft" class="screen hidden">
   <div class="draftwrap">
-    <div class="drhead"><h2 id="drTitle">🃏 Draft</h2><div id="drTimer" class="drtimer"></div></div>
+    <div class="drsticky"><div class="drhead"><h2 id="drTitle">🃏 Draft</h2><div id="drTimer" class="drtimer"></div></div>
+    <div id="drSteps" class="drsteps"></div></div>
+    <div id="drHow" class="drhow"><b>How the Draft works</b><ol><li>Each round you and your opponent are each shown <b>2 Pokémon</b> of the same rarity.</li><li>Tap <b>Pick</b> under the one you want before the timer runs out (if you wait, one is chosen for you).</li><li>After <b>6 rounds</b> both teams are revealed and the duel starts. Plates are dealt at random.</li></ol></div>
     <div class="small muted" id="drSub"></div>
     <div id="drOpts" class="dropts"></div>
     <div id="drStatus" class="notice hidden"></div>

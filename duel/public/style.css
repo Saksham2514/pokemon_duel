@@ -515,3 +515,17 @@ button{border-radius:10px}
 
 .crazybar{margin:4px 0;padding:6px 10px;border-radius:10px;background:linear-gradient(90deg,#d63384,#6f42c1);color:#fff;font-size:13px;font-weight:600;text-align:center}
 .crazybar.hidden{display:none}
+
+/* v10.56 draft polish */
+.drsticky{position:sticky;top:0;z-index:5;background:linear-gradient(#0a1128 80%,transparent);padding:6px 0 4px}
+.drsteps{display:flex;gap:6px;margin-top:4px}.drsteps i{flex:1;height:7px;border-radius:4px;background:#1b2a55;transition:background .3s}.drsteps i.done{background:#58c26b}.drsteps i.now{background:#ffcb05;animation:glow 1.2s infinite}
+.drhow{background:#12204a;border:1px solid #2c3f7a;border-radius:12px;padding:8px 12px;margin:6px 0;font-size:13px;line-height:1.45}.drhow ol{margin:4px 0 0 18px;padding:0}
+.drtimer:empty,#drInfo:empty,#drInfo.hidden{display:none}
+#drInfo{min-height:0}
+.dcard{animation:dIn .35s ease both}.dcard:nth-child(2){animation-delay:.08s}
+@keyframes dIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.dcard.picked{box-shadow:0 0 0 3px #58c26b,0 0 22px #58c26b88;position:relative}.dcard.picked::after{content:"✓ Picked";position:absolute;top:8px;right:10px;background:#58c26b;color:#08210f;font-weight:800;font-size:12px;border-radius:8px;padding:2px 8px}
+.dcard.dim{opacity:.45;filter:grayscale(.5);transition:opacity .25s}
+.drcount{font-weight:800;font-size:18px;color:#ffcb05}
+#toastBox{position:fixed;left:50%;bottom:76px;transform:translateX(-50%);z-index:60;background:#241320;border:2px solid #ef6b6b;color:#ffd6d6;padding:8px 14px;border-radius:12px;font-size:13px;max-width:88vw;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}
+#toastBox.show{opacity:1}
