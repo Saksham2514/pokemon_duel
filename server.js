@@ -133,7 +133,7 @@ wss.on('connection', ws => {
       rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token, bot: m.t === 'bot' });
       if (m.t === 'bot') { const cu = DB.who(m.auth); room.campUser = cu && m.boss ? cu : null; room.campDone = false; room.campStage = String((m.boss && m.boss.stage) || ''); room.campFee = Math.max(0, Math.min(5000, +(m.boss && m.boss.fee) || 0)); if (room.campUser) { try { DB.setResult(room.campUser, { win: false, stage: room.campStage, fee: room.campFee, pending: true }); } catch (e) { } } const bs = m.boss && m.boss.deck && !E.validateDeck(m.boss.deck) ? m.boss : null; room.boss = bs ? { deck: bs.deck, skill: Math.max(0, Math.min(1, +bs.skill || 0)), name: String(bs.name || 'Boss') } : null; room.seats[1] = room.boss ? mkSeat(room.boss.name, room.boss.deck, true, room.boss.skill) : mkSeat('Rival Bot', randomDeck(Math.random), true, 0.85); if (Math.random() < 0.5) { room.seats.reverse(); room.seats.forEach((s, i) => { if (!s.bot) { c.seat = i; send(ws, { t: 'room', code, seat: i, token: s.token, bot: true }); } }); } startGame(room); }
-      else send(ws, { t: 'waiting', code });
+      else send(ws, { t: 'waiting', code }); 
     } else if (m.t === 'join') {
       const room = rooms.get(String(m.code || '').toUpperCase()); if (!room) return send(ws, { t: 'err', msg: 'Room not found.' });
       if (room.seats[1]) return send(ws, { t: 'err', msg: 'Room is full.' });
