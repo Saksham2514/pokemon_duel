@@ -9,7 +9,7 @@ for (let i = 0; i < N; i++) {
   const r = mulberry(i + 1); const mk = () => { const ids = []; const pool = onlyNew ? special : LIST.filter(f => f.mp >= 1); while (ids.length < 6) { const f = pool[(r() * pool.length) | 0]; if (!ids.includes(f.id)) ids.push(f.id); } const keys = Object.keys(PLATES).sort(() => r() - 0.5); const pl = []; let c = 0; for (const k of keys) if (c + PLATES[k].cost <= 6) { pl.push(k); c += PLATES[k].cost; } return { figs: ids, plates: pl }; };
   const dk = [mk(), mk()]; if (E.validateDeck(dk[0]) || E.validateDeck(dk[1])) { i--; continue; }
   try {
-    const g = E.newGame(dk, ['A', 'B'], i + 77, { bots: [true, true] }); let guard = 0;
+    const g = E.newGame(dk, ['A', 'B'], i + 77, { bots: [true, true], crazy: !!process.env.CRAZY }); let guard = 0;
     while (!g.over && guard++ < 1500) { const s = g.phase === 'choose' ? g.pending.task.seat : g.cur; const a = botAct(g, s, r, 0.3); if (!a) break; const res = E.apply(g, s, a); if (res.error) { const L = E.legal(g); const u = Object.keys(L.moves)[0]; if (u) E.apply(g, s, { t: 'move', uid: +u, to: L.moves[u][0] }); else break; } }
     done++; if (g.over) fin++;
   } catch (e) { errs++; if (errs < 6) console.log('EXC game', i, e.stack.split('\n').slice(0, 4).join(' | ')); }

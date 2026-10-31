@@ -171,3 +171,34 @@ Release pass: full regression (abilities 80/80, moves, fuzz 300 games, sim, aren
 
 ## v10.46 — shop prices
 Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 25,000 · UX 50,000 (were 250/450/1,800/4,000/5,000). Plates 🪙1,500 (cost 1) / 4,000 (cost 2) (were ~150–400). Selling a duplicate pays C 200 · UC 600 · R 2,000 · EX 5,000 · UX 10,000, always well below the buy price. Prices sit around the average value of each chest's pulls so chests and the shop stay consistent.
+
+## v10.47 — markers & abilities pass
+- **Final Song marker is now visible**: a purple ♪N badge on the Pokémon shows how many turns are left before it is knocked out. Mind Blown (Blacephalon) now also marks its user with Final Song as its card says. Mismagius' Final Chant reads as ☆☆ (data glitch "&start☆" was parsed as 0 stars).
+- **Symbiont** (Nihilego, White Tentacles): the battle opponent gets a 🧬 marker. Its owner cannot move it; the opposing player may MP-move it (never onto a goal, no battle, ends their turn). Tagging by an ally removes the marker; leaving the field clears it.
+- **Diamond Aura** (Diancie): while on the field, the owner's healthy Fairy-types are not knocked out by Dragon-type Attack damage or by knockout effects of Dark-types.
+- **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
+- 18 new automated checks (test/abilities.js now 98).
+
+## v10.55 — Crazy Mode retuned
+Events now every 10–14 turns (was 4–6) and affect ONE Pokémon per side instead of everything: Ability Swap (borrows another Pokémon's ability, 🌀 badge), Replaced (becomes another Pokémon of the same rarity), Switch Sides (one field Pokémon from each team swap teams in place), Condition (random burn/paralysis/freeze/sleep/poison/confusion on one Pokémon per side), Rally (all Wait cleared). Never the same event twice in a row.
+
+## v10.54 — Crazy Mode + Crazy Draft
+Two new queue modes (casual, no rewards): 🌀 Crazy match (random teams) and 🌀 Crazy Draft (draft first). Every 4–6 turns one random event hits both players: Ability Shuffle (abilities are dealt around; shuffled Pokémon get a 🌀 badge), Transformation (one Pokémon per side becomes another of the same rarity), Status Storm (one random Pokémon per side gets a status) or Rally (all Wait cleared). A banner shows the last event and the countdown. Also fixed: Loyalty, Hold-back-lock (Bite Instinct) and the new swap buttons were never sent to the browser; they are now.
+
+## v10.53 — Plusle / Minun
+Plusle and Minun: while the other is adjacent, the White Attacks of your Electric-type Pokémon paralyze the battle opponent (applied before knock-outs, like other attack effects).
+
+## v10.52 — Ability audit, batch 4
+Fly Away / Fly are moves: Spinarak Sticky Web (Fly Away can't jump over it), Flygon Sand Blizzard (opponent's Fly Away nullified), Galvantula Electric Web (jumpers paralyzed). Arbok/Dragonair Shed Skin (automatic at the start of your turn: cures all conditions, turn ends). Shiftry Cut Off (goal point glows as a special move). Aipom/Whimsicott Run Off / Strong Breeze and Manectric Volt Swap (one-tap swap buttons before moving; swapping doesn't use the turn).
+
+## v10.51 — Ability audit, batch 3
+Completed partials: Toxapex (Grass/Fairy can't pass it; poisoned Grass/Fairy lose pass abilities), Mawile Fang Trap (enemies next to it can't be moved by your effects), Deoxys Cross Wind (free bench entry). New: Hawlucha/Kartana range-2 attacks, Magneton spin immunity, Gallade Psychic Sensor, Zygarde Enforcer, Pheromosa/Necrozma/Ultra Necrozma ability nullification (+ first-battle Gold→White), Palkia Space Slide, Shiny Ho-Oh Cleansing Fire, Electrode Aftermath Switch (auto, only when it nets a gain), Frost Rotom Frost Tag, Growlithe/Solgaleo/Lunala battle pin, Goodra Slime Barrier.
+
+## v10.50 — Ability audit, batch 2
+Now working: Slaking Truant (no battle after an MP move), Totodile Bite Instinct (must fight after moving – Hold back hidden), Hypno Spellbind (sleep isn't cured by other abilities), Heracross King Horn (+1 spin on spin-again attacks; Blue attacks miss while Cracked), Toxapex/Mawile (can't be moved by opposing attacks), Torracat Fire Bell, Relicanth Survive, Tentacool/Bidoof/Deoxys (no 3-copy deck limit).
+
+## v10.49 — Ability audit, batch 1
+Abilities that used to be "flavour text only" and now work: Turtonator Shell Armor, Abra Sturdy (healthy only), Type: Null Control Mask (healthy only), Deoxys Shelter (self + adjacent allies) — all block knock-out *effects* of attacks; Scizor/Mega Scizor Steel Breaker (cracks opponents that spin big attacks); Scrafty/Scraggy Rubbery Repulsion; Haxorus Double-Edged Axe (KO effect bounces back); Absol Pressure (+1 Wait); Rhyhorn/Rhydon/Rhyperior straight-line 1–2 step move. Remaining flavour-only abilities need new systems (evolution, Ultra Space, Restored, Mega forms, Lock-On/Slime/Photon markers) and are tracked for later batches.
+
+## v10.48 — Draft mode (1 v 1)
+Team-builder screen → **🃏 Draft match** (finds a human, bot fills in after ~7 s) or **Draft vs bot** (instant). Six rounds: each player is offered 2 Pokémon of the same rarity (both players see the same rarity sequence, chosen from a few templates, so it is fair; all 12 offered Pokémon have different base names, so any combination of picks is a legal deck), picks one within 25 s (auto-pick on timeout), picks stay hidden until the end, plates are dealt at random, then both teams are revealed and the duel starts. Casual: no rewards, not on the ladder. Server: lib/draft.js + startDraft/draftPick in server.js; messages `draft`, `draftPick`, `draftWait`, `draftOpp`, `draftDone`.

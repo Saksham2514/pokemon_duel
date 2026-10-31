@@ -1,6 +1,6 @@
 'use strict';
 const E = require('../lib/engine'); const { LIST, FIGS } = require('../lib/figures'); const T = E._t; const B = require('../lib/board');
-const byName = n => { const f = LIST.find(x => x.name === n && x.rules.length) || LIST.find(x => x.name === n); if (!f) throw new Error('no fig ' + n); return f.id; };
+const byName = n => { const f = LIST.find(x => x.name === n && x.rules.length && (n !== 'Deoxys' || x.rules.some(r => r.k === 'koFxImmune'))) || LIST.find(x => x.name === n); if (!f) throw new Error('no fig ' + n); return f.id; };
 let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('FAIL', m); } };
 function setup(a, b) { const g = E.newGame([{ figs: a.map(byName), plates: [] }, { figs: b.map(byName), plates: [] }], ['A', 'B'], 7); return g; }
 const u = (g, seat, name) => Object.values(g.figs).find(f => f.owner === seat && FIGS[f.fid].name === name);
@@ -299,6 +299,106 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
   const fs = LX.find(x => x.id === sk.fid).segs.find(x => x.name === 'Fly Away'); T.runOps(gf, fs.ops, { self: sk, opp: ef, oppPos: 'T2' });
   ok(T.taskOptions(gf, gf.tasks[gf.tasks.length - 1]).includes(B6.GOALS[0]), 'Fly Away can land on the goal point beside the opponent'); }
 
+
+// ---- 81+ : Symbiont / Diamond Aura / Illusion / Final Song marker / star parsing
+{ const q = n => LIST.find(x => x.name === n);
+  ok(q('Mismagius').segs.find(s => s.name === 'Final Chant').dmg.stars === 2, 'Mismagius Final Chant parses as 2 stars (data glitch &start☆)');
+  ok(FIGS[byName('Diancie')].rules.some(r => r.k === 'diamondAura') && FIGS[byName('Zoroark')].rules.some(r => r.k === 'illusion') && FIGS[byName('Zorua')].rules.some(r => r.k === 'illusion'), 'Diamond Aura / Illusion rules parsed');
+  ok(q('Blacephalon').segs.find(s => s.name === 'Mind Blown').ops.some(o => o.op === 'finalSongSelf') && q('Blacephalon').segs.find(s => s.name === 'Mind Blown').ops.some(o => o.op === 'ko'), 'Mind Blown KOs the opponent and marks itself with Final Song');
+  ok(q('Nihilego').segs.some(s => s.ops.some(o => o.op === 'symbiont')), 'Symbiont op parsed');
+  const fl = LIST.filter(f => !f.rules.length).slice(0, 14).map(f => f.name);
+  // Symbiont
+  { const g = setup(pad(['Nihilego'], fill), pad(['Rattata'], fill)); const N = u(g, 0, 'Nihilego'), R = u(g, 1, 'Rattata'); place(g, N, 'I00'); place(g, R, 'I01');
+    T.runOps(g, [{ op: 'symbiont' }], { self: N, opp: R }); ok(R.symbiont === true, 'Symbiont marker attached to the battle opponent');
+    g.cur = 1; g.phase = 'main'; g.moved = false; R.canActAtTurnStart = true; R.wait = 0; const L1 = E.legal(g); ok(!L1.moves[R.uid], 'owner cannot move its Symbiont-marked Pokémon');
+    const r1 = E.apply(g, 1, { t: 'move', uid: R.uid, to: 'I02' }); ok(r1.error && /Symbiont/.test(r1.error), 'owner move rejected: ' + r1.error);
+    g.cur = 0; g.moved = false; N.canActAtTurnStart = true; const L0 = E.legal(g); ok(Array.isArray(L0.moves[R.uid]) && L0.moves[R.uid].length > 0 && !L0.moves[R.uid].some(p => p === B.GOALS[0] || p === B.GOALS[1]), 'opposing player may MP-move it, never onto a goal');
+    const to = L0.moves[R.uid][0]; const r2 = E.apply(g, 0, { t: 'move', uid: R.uid, to }); ok(!r2.error && R.pos === to && g.cur === 1, 'opposing player moves the marked Pokémon and the turn ends');
+    // tagging by an ally removes the marker
+    R.symbiont = true; const al = Object.values(g.figs).find(f => f.owner === 1 && f !== R && f.loc !== 'field'); const adj = B.ADJ[R.pos].find(p => !g.occ[p]); place(g, al, adj); T.tagAllies(g, al); ok(!R.symbiont, 'tagging removes the Symbiont marker'); } 
+  // Diamond Aura
+  { let prot = 0, ctrlKO = 0, n = 0;
+    for (let seed = 1; seed <= 500; seed++) for (const aura of [true, false]) {
+      const g = E.newGame([{ figs: ['Salamence', 'Rattata', 'Machop', 'Torchic', 'Litten', 'Zubat'].map(byName), plates: [] }, { figs: (aura ? ['Azumarill', 'Diancie'] : ['Azumarill', 'Rattata']).concat(fill.slice(2, 6)).map(x => byName(x)), plates: [] }], ['A', 'B'], seed);
+      const A = u(g, 0, 'Salamence'), D = u(g, 1, 'Azumarill'); place(g, A, 'I00'); place(g, D, 'I01'); if (aura) place(g, u(g, 1, 'Diancie'), 'I10');
+      g.cur = 0; g.phase = 'battleChoice'; g.moved = true; g.pending = { attacker: A.uid, targets: [D.uid], z: null };
+      const r = E.apply(g, 0, { t: 'battle', target: D.uid }); const b = r.battle; if (!b || !['White', 'Gold'].includes(b.attacker.color) || b.attacker.dmg <= 0 || !['Red', 'Purple', 'Gold', 'White'].includes(b.defender.color)) continue;
+      if (b.defender.color === 'Red' || (b.defender.color === 'White' && b.defender.dmg < b.attacker.dmg)) { n++; if (aura && D.loc === 'field') prot++; if (!aura && D.loc !== 'field') ctrlKO++; } }
+    ok(n > 50 && prot > 20 && ctrlKO > 20, `Diamond Aura: Fairy survives Dragon Attack damage (protected ${prot}, unprotected control KO'd ${ctrlKO}, of ${n})`); }
+  // Illusion
+  { const mk = () => { const g = setup(pad(['Rattata', 'Zoroark'], fill), pad(['Machop'], fill)); const Ra = u(g, 0, 'Rattata'), Z = u(g, 0, 'Zoroark'), M = u(g, 1, 'Machop'); place(g, Ra, 'I01'); Z.loc = 'bench'; Z.wait = 0; place(g, M, 'I00'); Ra.battled = false; g.cur = 1; g.phase = 'battleChoice'; g.moved = true; g.pending = { attacker: M.uid, targets: [Ra.uid], z: null }; return { g, Ra, Z, M }; };
+    { const { g, Ra, Z, M } = mk(); E.apply(g, 1, { t: 'battle', target: Ra.uid }); ok(g.phase === 'choose' && g.pending.task.kind === 'illusion' && g.pending.task.seat === 0 && g.pending.options.includes(Z.uid), 'Illusion offered to the defender before the battle');
+      const L = E.legal(g); ok(L.choose && L.choose.kind === 'illusion', 'legal exposes the illusion choice');
+      const r = E.apply(g, 0, { t: 'choose', to: Z.uid }); ok(!r.error && Z.loc !== 'bench' && (Ra.loc === 'bench') && r.battle && r.battle.defender.uid === Z.uid, 'accepting Illusion: Zoroark takes the point, Rattata goes to the bench, Zoroark fights'); }
+    { const { g, Ra, Z, M } = mk(); E.apply(g, 1, { t: 'battle', target: Ra.uid }); const r = E.apply(g, 0, { t: 'choose', to: null }); ok(!r.error && Z.loc === 'bench' && r.battle && r.battle.defender.uid === Ra.uid, 'declining Illusion: the original defender fights'); }
+    { const { g, Ra, Z, M } = mk(); Ra.battled = true; E.apply(g, 1, { t: 'battle', target: Ra.uid }); ok(g.phase !== 'choose', 'no Illusion once the defender has already battled'); } }
+  // Final Song marker is exposed with a countdown and still knocks out on time
+  { const g = setup(pad(['Mega Altaria'], fill), pad(['Rattata'], fill)); const Al = u(g, 0, 'Mega Altaria'), R = u(g, 1, 'Rattata'); place(g, Al, 'I00'); place(g, R, 'I01'); T.runOps(g, [{ op: 'finalSong', n: 2, turns: 5 }], { self: Al, opp: R });
+    const fv = () => E.view(g, 0).figs.find(f => f.uid === R.uid); ok(fv().fs === 5, 'Final Song marker visible in the view with 5 turns left (' + fv().fs + ')');
+    let n = 0; while (R.loc === 'field' && n++ < 30) { g.cur = 0; g.phase = 'main'; g.moved = false; const L = E.legal(g); const m = Object.keys(L.moves).find(k => L.moves[k].length); if (!m) break; E.apply(g, g.cur, { t: 'move', uid: +m, to: L.moves[m][0] }); if (g.phase === 'battleChoice') E.apply(g, g.cur, { t: 'battle', target: 'skip' }); if (g.over) break; }
+    ok(R.loc !== 'field' || g.over, 'Final Song marker eventually knocks the Pokémon out (turns passed: ' + n + ')'); } }
+// ---- v10.49 passives
+{ const rk = (n, k) => FIGS[byName(n)].rules.some(r => r.k === k);
+  ok(LIST.some(f => f.name === 'Deoxys' && f.rules.some(r => r.k === 'koFxImmune')) && rk('Turtonator', 'koFxImmune') && rk('Abra', 'koFxImmune') && rk('Type: Null', 'koFxImmune') && rk('Scizor', 'crackOnBig') && rk('Scrafty', 'bigSafe') && rk('Absol', 'pressure') && rk('Haxorus', 'axeReflect') && rk('Rhyhorn', 'altMove') && rk('Rhyperior', 'altMove'), 'v10.49 rules parsed');
+  const mk = (me, foe) => { const g = setup(pad([me], fill), pad([foe], fill)); const M = u(g, 0, me), X = u(g, 1, foe); place(g, X, 'I00'); place(g, M, 'I01'); return { g, M, X }; };
+  // KO-effect immunity
+  { const { g, M, X } = mk('Turtonator', 'Rattata'); T.runOps(g, [{ op: 'ko', who: 'opp' }], { self: X, opp: M }); ok(M.loc === 'field', 'Shell Armor blocks KO effect'); }
+  { const { g, M, X } = mk('Abra', 'Rattata'); T.runOps(g, [{ op: 'ko', who: 'opp' }], { self: X, opp: M }); ok(M.loc === 'field', 'Sturdy blocks KO effect when healthy');
+    T.applyStatus(g, M, 'poisoned', null); T.runOps(g, [{ op: 'ko', who: 'opp' }], { self: X, opp: M }); ok(M.loc !== 'field', 'Sturdy fails when affected by a condition'); }
+  { const { g, M, X } = mk('Deoxys', 'Rattata'); const ally = Object.values(g.figs).find(f => f.owner === 0 && f !== M && f.loc !== 'field'); place(g, ally, 'I02');
+    T.runOps(g, [{ op: 'ko', who: 'opp' }], { self: X, opp: ally }); ok(ally.loc === 'field', 'Shelter protects adjacent ally'); }
+  { const { g, M, X } = mk('Haxorus', 'Rattata'); T.runOps(g, [{ op: 'ko', who: 'opp' }], { self: X, opp: M }); ok(M.loc === 'field' && X.loc !== 'field', 'Double-Edged Axe knocks out the attacker instead'); }
+  // Pressure
+  { const g = setup(pad(['Absol'], fill), pad(['Rattata'], fill)); const A = u(g, 0, 'Absol'), R = u(g, 1, 'Rattata'); place(g, A, 'I00'); place(g, R, 'I01'); R.wait = 0;
+    g.effSrc = A; T.addWait(g, R, 1); g.effSrc = null; ok(R.wait === 2, 'Pressure adds a turn of Wait (' + R.wait + ')'); }
+  // Rhyhorn straight line 1-2
+  { const g = setup(pad(['Rhyhorn'], fill), pad(['Rattata'], fill)); const Rh = u(g, 0, 'Rhyhorn'); place(g, Rh, 'I20'); const al = E.altReach(g, Rh); ok(Object.keys(al).length > 0, 'Rhyhorn has straight-line special move targets (' + Object.keys(al).length + ')'); }
+}
+// ---- v10.50 passives (batch 2)
+{ const rkAny = (n, k) => LIST.some(f => f.name === n && f.rules.some(r => r.k === k));
+  ok(rkAny('Slaking', 'truant') && rkAny('Totodile', 'mustBattle') && rkAny('Hypno', 'spellbind') && rkAny('Heracross', 'kingHorn') && rkAny('Heracross', 'blueMissIfCracked') && rkAny('Toxapex', 'immovable') && rkAny('Mawile', 'immovable') && rkAny('Torracat', 'koBurnGrass') && rkAny('Relicanth', 'noExclude') && rkAny('Tentacool', 'noLimit') && rkAny('Bidoof', 'noLimit'), 'batch 2 rules parsed');
+  ok(!E.validateDeck({ figs: Array(6).fill(LIST.find(f => f.name === 'Tentacool' && f.rules.some(r => r.k === 'noLimit')).id), plates: [] }), 'Form Herd lifts the 3-copy limit');
+  const mk = (me, foe) => { const g = setup(pad([me], fill), pad([foe], fill)); const M = u(g, 0, me), X = u(g, 1, foe); place(g, X, 'I00'); place(g, M, 'I01'); return { g, M, X }; };
+  { const { g, M, X } = mk('Toxapex', 'Rattata'); T.runOps(g, [{ op: 'bench', who: 'opp' }], { self: X, opp: M }); ok(M.loc === 'field', 'Toxapex cannot be moved by attacks'); }
+  { const { g, M, X } = mk('Relicanth', 'Rattata'); T.runOps(g, [{ op: 'excludeOpp', turns: 2 }], { self: X, opp: M }); ok(M.loc === 'field', 'Relicanth cannot be excluded'); }
+  { const { g, M, X } = mk('Torracat', 'Rattata'); const gr = LIST.find(f => FIGS[f.id].types.includes('grass') && f.rules.length === 0 && f.name !== 'Torracat'); if (gr) { const G = Object.values(g.figs).find(f => f.owner === 1 && f.fid === gr.id) || null; if (G) { place(g, G, 'I02'); T.koFigure(g, M, { force: true }); ok(G.st.includes('burned'), 'Fire Bell burns nearby Grass types'); } } }
+  { const { g, M, X } = mk('Hypno', 'Rattata'); M.st = ['asleep']; g.cur = 0; const f2 = Object.values(g.figs).find(f => f.owner === 0 && f !== M && f.loc === 'bench'); ok(M.st.includes('asleep'), 'Hypno asleep sanity'); }
+  { const { g, M, X } = mk('Slaking', 'Rattata'); g.cur = 0; g.phase = 'main'; g.moved = false; M.canActAtTurnStart = true; M.wait = 0; const L = E.legal(g); const mv = (L.moves[M.uid] || []).find(p => p !== M.pos); if (mv) { E.apply(g, 0, { t: 'move', uid: M.uid, to: mv }); ok(g.phase !== 'battleChoice', 'Truant: no battle after an MP move'); } }
+}
+// ---- v10.51 (batch 3)
+{ const has = (n, k) => LIST.some(f => f.name === n && f.rules.some(r => r.k === k));
+  ok(['Hawlucha:range2', 'Kartana:range2', 'Magneton:spinImmune', 'Gallade:psychicSensor', 'Pheromosa:nullOpp', 'Necrozma:nullOpp', 'Zygarde Complete Forme:enforcer', 'Palkia:spaceSlide', 'Shiny Ho-Oh:koGhostSpin', 'Electrode:aftermath', 'Frost Rotom:frostTag', 'Growlithe:pinOpp', 'Goodra:slimeBarrier', 'Deoxys:freeEntry', 'Toxapex:noPassGF', 'Mawile:fangTrap'].every(x => has(...x.split(':'))), 'batch 3 rules parsed');
+  const mk = (me, foe) => { const g = setup(pad([me], fill), pad([foe], fill)); const M = u(g, 0, me), X = u(g, 1, foe); return { g, M, X }; };
+  { const { g, M, X } = mk('Magneton', 'Rattata'); place(g, X, 'I00'); place(g, M, 'I01'); const before = g.log.length; T.runOps(g, [{ op: 'spinOne' }], { self: X, opp: M }); ok(!g.log.slice(before).some(x => /Magneton spins/.test(x.msg)), 'Magneton is not subject to spin effects'); }
+  { const { g, M, X } = mk('Hawlucha', 'Rattata'); place(g, M, 'I00'); place(g, X, 'I02'); const mid = Object.values(g.figs).find(f => f.owner === 0 && f !== M && f.loc !== 'field'); place(g, mid, 'I01'); ok(E.altReach && T.reach(g, M)['I00'], 'Hawlucha can attack in place at range 2'); }
+  { const pa = LIST.find(f => f.name === 'Palkia' && f.rules.some(r => r.k === 'spaceSlide')); const g = E.newGame([{ figs: [pa.id, ...fill.slice(0, 5).map(byName)], plates: [] }, { figs: fill.slice(5, 11).map(byName), plates: [] }], ['A', 'B'], 3);
+    const P = Object.values(g.figs).find(f => f.owner === 0 && f.fid === pa.id); place(g, P, 'I01'); P.st = ['poisoned']; const r = T.koBattle(g, P, {}); ok(r === false && P.loc === 'field' && B.ENTRY[0].includes(P.pos) && P.wait >= 1 && !P.st.length, 'Palkia Space Slide: recovers, returns to entry point with Wait'); }
+  { const ga = LIST.find(f => f.name === 'Gallade' && f.rules.some(r => r.k === 'psychicSensor')); const ps = LIST.find(f => FIGS[f.id].types.includes('psychic') && f.rules.length && f.id !== ga.id);
+    const g = E.newGame([{ figs: [ga.id, ps.id, ...fill.slice(0, 4).map(byName)], plates: [] }, { figs: fill.slice(4, 10).map(byName), plates: [] }], ['A', 'B'], 3);
+    const G = Object.values(g.figs).find(f => f.owner === 0 && f.fid === ga.id), Q = Object.values(g.figs).find(f => f.owner === 0 && f.fid === ps.id), V = Object.values(g.figs).find(f => f.owner === 1); place(g, G, 'I00'); place(g, Q, 'I01'); place(g, V, 'I02'); g.cur = 0; g.phase = 'main';
+    T.battle(g, Q.uid, V.uid); ok(g.log.some(x => /nullified for/.test(x.msg)) && !Q.noAbility, 'Psychic Sensor nullifies psychic abilities during battle, restored afterwards'); }
+}
+// ---- v10.52 (batch 4)
+{ const has = (n, k) => LIST.some(f => f.name === n && f.rules.some(r => r.k === k));
+  ok(['Spinarak:stickyWeb', 'Aipom:preSwap', 'Flygon:sandBlizzard', 'Shiftry:cutOff', 'Arbok:shedSkin', 'Galvantula:electricWeb', 'Manectric:voltSwap', 'Whimsicott:preSwap'].every(x => has(...x.split(':'))), 'batch 4 rules parsed');
+  { const g = setup(pad(['Arbok'], fill), pad(['Rattata'], fill)); const A = u(g, 0, 'Arbok'); place(g, A, 'I00'); A.st = ['poisoned']; g.cur = 0; T.startTurn(g); ok(!A.st.length && g.shedEnd, 'Shed Skin cures at turn start and flags turn end'); }
+  { const g = setup(pad(['Shiftry'], fill), pad(['Rattata'], fill)); const S = u(g, 0, 'Shiftry'); place(g, S, 'I00'); g.cur = 0; ok(E.altReach(g, S)[B.GOALS[0]], 'Cut Off offers the goal point'); }
+  { const g = setup(pad(['Aipom'], fill), pad(['Rattata'], fill)); const A = u(g, 0, 'Aipom'); const al = Object.values(g.figs).find(f => f.owner === 0 && f !== A); place(g, A, 'I00'); place(g, al, 'I01'); g.cur = 0; g.phase = 'main'; A.canActAtTurnStart = true; A.wait = 0;
+    const L = E.legal(g); ok(L.preswap.some(p => p.uid === A.uid && p.with.includes(al.uid)), 'Run Off offered');
+    const r = E.apply(g, 0, { t: 'preswap', uid: A.uid, with: al.uid }); ok(!r.error && A.pos === 'I01' && al.pos === 'I00' && g.cur === 0, 'Run Off swaps without ending the turn'); }
+  { const g = setup(pad(['Manectric', 'Pikachu'], fill), pad(['Rattata'], fill)); const M = u(g, 0, 'Manectric'), P = u(g, 0, 'Pikachu'); const foe = u(g, 1, 'Rattata'); place(g, P, 'I00'); P.st = ['paralyzed']; place(g, foe, B.ENTRY[0][0]); g.cur = 0; g.phase = 'main'; M.canActAtTurnStart = true; M.wait = 0;
+    const r = E.apply(g, 0, { t: 'preswap', uid: M.uid, with: P.uid }); ok(!r.error && M.loc === 'field' && P.loc === 'bench' && foe.st.includes('paralyzed'), 'Volt Swap switches in and paralyzes entry blockers'); }
+}
+{ const g = setup(pad(['Plusle', 'Minun', 'Pikachu'], fill), pad(['Rattata'], fill)); const Pl = u(g, 0, 'Plusle'), Mi = u(g, 0, 'Minun'), Pk = u(g, 0, 'Pikachu'), R = u(g, 1, 'Rattata');
+  ok(FIGS[Pl.fid].rules.some(r => r.k === 'pairPara') && FIGS[Mi.fid].rules.some(r => r.k === 'pairPara'), 'Plusle/Minun parsed');
+  place(g, Pl, 'I00'); place(g, Mi, 'I01'); place(g, Pk, 'I02'); place(g, R, 'I10'); let n = 0, hit = 0;
+  for (let i = 0; i < 40; i++) { R.st = []; R.loc = 'field'; if (!R.pos) place(g, R, 'I10'); g.cur = 0; g.phase = 'main'; g.moved = false; const before = g.log.length; try { T.battle(g, Pk.uid, R.uid); } catch (e) {} if (g.log.slice(before).some(x => /Plusle\/Minun paralysis/.test(x.msg))) hit++; if (Pk.loc !== 'field') place(g, Pk, 'I02'); if (R.loc !== 'field') place(g, R, 'I10'); }
+  ok(hit > 0, 'Plusle/Minun White attacks paralyze when adjacent (' + hit + ' hits in 40 battles)'); }
+{ const kinds = new Set(); let bad = 0;
+  for (let sd = 1; sd <= 12; sd++) { const g = E.newGame([{ figs: fill.slice(0, 6).map(byName), plates: [] }, { figs: fill.slice(6, 12).map(byName), plates: [] }], ['A', 'B'], sd, { crazy: true });
+    ok(g.crazy && g.crazy.next >= 10 && g.crazy.next <= 14, 'crazy schedule 10-14 turns'); Object.values(g.figs).slice(0, 3).forEach((f, i) => place(g, f, ['I00', 'I01', 'I02'][i])); Object.values(g.figs).filter(f => f.owner === 1).slice(0, 2).forEach((f, i) => place(g, f, ['I20', 'I21'][i]));
+    for (let k = 0; k < 8; k++) { g.crazy.next = 0; const t0 = g.crazy.n; try { T.startTurn(g); } catch (e) { bad++; console.log(e.stack); } if (g.crazy.last) kinds.add(g.crazy.last.kind); if (g.crazy.next < g.turn + 10 || g.crazy.next > g.turn + 14) bad++; } }
+  ok(!bad && kinds.size === 5, 'Crazy events all fire without errors and reschedule (' + [...kinds].join(',') + ')'); }
 console.log(`ability tests: ${pass} passed, ${fail} failed`);
 
 // optional battle: skipping ends the turn without a fight; the battle ends the turn
