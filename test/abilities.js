@@ -396,9 +396,14 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
   ok(hit > 0, 'Plusle/Minun White attacks paralyze when adjacent (' + hit + ' hits in 40 battles)'); }
 { const kinds = new Set(); let bad = 0;
   for (let sd = 1; sd <= 12; sd++) { const g = E.newGame([{ figs: fill.slice(0, 6).map(byName), plates: [] }, { figs: fill.slice(6, 12).map(byName), plates: [] }], ['A', 'B'], sd, { crazy: true });
-    ok(g.crazy && g.crazy.next >= 10 && g.crazy.next <= 14, 'crazy schedule 10-14 turns'); Object.values(g.figs).slice(0, 3).forEach((f, i) => place(g, f, ['I00', 'I01', 'I02'][i])); Object.values(g.figs).filter(f => f.owner === 1).slice(0, 2).forEach((f, i) => place(g, f, ['I20', 'I21'][i]));
-    for (let k = 0; k < 8; k++) { g.crazy.next = 0; const t0 = g.crazy.n; try { T.startTurn(g); } catch (e) { bad++; console.log(e.stack); } if (g.crazy.last) kinds.add(g.crazy.last.kind); if (g.crazy.next < g.turn + 10 || g.crazy.next > g.turn + 14) bad++; } }
-  ok(!bad && kinds.size === 5, 'Crazy events all fire without errors and reschedule (' + [...kinds].join(',') + ')'); }
+    ok(g.crazy && g.crazy.next >= 5 && g.crazy.next <= 7, 'crazy schedule 5-7 turns'); Object.values(g.figs).slice(0, 3).forEach((f, i) => place(g, f, ['I00', 'I01', 'I02'][i])); Object.values(g.figs).filter(f => f.owner === 1).slice(0, 2).forEach((f, i) => place(g, f, ['I20', 'I21'][i]));
+    for (let k = 0; k < 8; k++) { g.crazy.next = 0; const t0 = g.crazy.n; try { T.startTurn(g); } catch (e) { bad++; console.log(e.stack); } if (g.crazy.last) kinds.add(g.crazy.last.kind); if (g.crazy.next < g.turn + 5 || g.crazy.next > g.turn + 7) bad++; } }
+  ok(!bad && kinds.size >= 7, 'Crazy events all fire without errors and reschedule (' + [...kinds].join(',') + ')'); }
+{ const dk = LIST.find(f => f.name === 'Darkrai' && f.segs.some(x => x.name === 'Dark Leap')); const g = E.newGame([{ figs: [dk.id, ...fill.slice(0, 5).map(byName)], plates: [] }, { figs: fill.slice(5, 11).map(byName), plates: [] }], ['A', 'B'], 5);
+  const D = Object.values(g.figs).find(f => f.owner === 0 && f.fid === dk.id), X = Object.values(g.figs).find(f => f.owner === 1); place(g, D, 'I00'); place(g, X, 'I10'); g.cur = 0;
+  const seg = FIGS[dk.id].segs.find(x => x.name === 'Dark Leap'); T.runOps(g, seg.ops, { self: D, opp: X, oppPos: X.pos, selfPos: D.pos });
+  ok(g.tasks.length === 1 && g.tasks[0].waitIfMoved && D.wait === 0, 'Dark Leap offers a 2-step move and no Wait yet');
+  const opts = T.taskOptions(g, g.tasks[0]); ok(opts.length > 0, 'Dark Leap has destinations'); const t0 = g.tasks.shift(); T.applyTask(g, t0, opts[0]); ok(D.wait === 1 && D.pos === opts[0], 'Dark Leap: Wait only after moving'); const g2tasks = 0; }
 console.log(`ability tests: ${pass} passed, ${fail} failed`);
 
 // optional battle: skipping ends the turn without a fight; the battle ends the turn

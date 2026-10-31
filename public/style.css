@@ -529,3 +529,18 @@ button{border-radius:10px}
 .drcount{font-weight:800;font-size:18px;color:#ffcb05}
 #toastBox{position:fixed;left:50%;bottom:76px;transform:translateX(-50%);z-index:60;background:#241320;border:2px solid #ef6b6b;color:#ffd6d6;padding:8px 14px;border-radius:12px;font-size:13px;max-width:88vw;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}
 #toastBox.show{opacity:1}
+
+/* v10.62 crazy announcement */
+.crazyov{position:fixed;inset:0;z-index:80;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;padding:20px;background:radial-gradient(circle at center,#6f42c1dd 0%,#d63384aa 45%,#0a1128ee 100%);color:#fff;animation:czIn .5s cubic-bezier(.2,1.4,.4,1) both;transition:opacity .45s}
+.crazyov.out{opacity:0;pointer-events:none}
+.cz-ring{position:absolute;width:260px;height:260px;border-radius:50%;border:6px dashed #ffffff88;animation:czSpin 3s linear infinite}
+.cz-ic{font-size:92px;line-height:1;animation:czPop .8s cubic-bezier(.2,1.6,.4,1) both;filter:drop-shadow(0 6px 14px #0008)}
+.cz-tt{font-size:14px;letter-spacing:.3em;font-weight:800;opacity:.85}.cz-nm{font-size:34px;font-weight:900;text-shadow:0 4px 0 #0006;animation:czPop .6s .1s both}
+.cz-tx{max-width:520px;font-size:16px;line-height:1.4;background:#0a112866;padding:8px 14px;border-radius:12px;animation:dIn .5s .35s both}
+@keyframes czIn{from{opacity:0;transform:scale(1.15)}to{opacity:1;transform:none}}
+@keyframes czPop{from{transform:scale(0) rotate(-200deg)}to{transform:none}}
+@keyframes czSpin{to{transform:rotate(360deg)}}
+#board.shake{animation:czShake .8s}
+@keyframes czShake{10%,50%,90%{transform:translate(-6px,2px) rotate(-.6deg)}30%,70%{transform:translate(6px,-2px) rotate(.6deg)}}
+.czring{animation:czRing .9s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+@keyframes czRing{0%{opacity:1;transform:scale(.8)}100%{opacity:0;transform:scale(1.6)}}

@@ -39,6 +39,7 @@ const SFX = (() => {
     plate: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, .16, 'square', .04, i * .07)), spin: () => { for (let i = 0; i < 8; i++) tone(300 + i * 40, .05, 'square', .025, i * .09); },
     hit: () => tone(180, .18, 'sawtooth', .09, 0, 60), ko: () => { tone(300, .5, 'sawtooth', .09, 0, 50); tone(120, .5, 'square', .06, .05, 40); },
     turn: () => { tone(880, .1, 'sine', .05); tone(1175, .14, 'sine', .05, .1); }, win: () => [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, .25, 'triangle', .07, i * .12)),
+    crazy: () => { [196, 233, 277, 370, 466].forEach((f, i) => tone(f, .22, 'sawtooth', .05, i * .06, f * 1.5)); tone(80, .6, 'square', .07, .1, 40); },
     lose: () => [392, 349, 311, 261].forEach((f, i) => tone(f, .3, 'sawtooth', .05, i * .18)), err: () => tone(160, .15, 'square', .05)
   };
   return { get on() { return on; }, toggle() { on = !on; try { localStorage.setItem('duel_snd', on ? '1' : '0'); } catch (e) { } return on; }, play(n) { if (!on || !S[n]) return; try { ctx = ctx || new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); S[n](); } catch (e) { } } };
@@ -84,7 +85,7 @@ function onMsg(m) {
   else if (m.t === 'waiting' && window.pvpMode) { Camp.pvpMsg('Room code: ' + m.code + ' — tell your opponent to open Campaign → PvP and join this code. Waiting for them…'); }
   else if (m.t === 'waiting' && m.quick) { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Searching for an opponent…'; $('#btnCancelQ').classList.remove('hidden'); }
   else if (m.t === 'waiting') { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Room code: ' + m.code + ' — share it with your opponent. Waiting for them to join…'; }
-  else if (m.t === 'start') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); lastPlateN = null; lastPos = {}; activeAnim = {}; ghosts = []; stateQ = []; animating = false; seenBadges = {}; badgeStart = {}; endShown = false; if (window.Camp) Camp.reset(); show('game'); ui = { sel: null, info: null, plate: null, z: '' }; $('#chat').innerHTML = ''; $('#endOverlay').classList.add('hidden'); }
+  else if (m.t === 'start') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); lastPlateN = null; crazySeen = null; crazyRings = null; crazyFresh = false; lastPos = {}; activeAnim = {}; ghosts = []; stateQ = []; animating = false; seenBadges = {}; badgeStart = {}; endShown = false; if (window.Camp) Camp.reset(); show('game'); ui = { sel: null, info: null, plate: null, z: '' }; $('#chat').innerHTML = ''; $('#endOverlay').classList.add('hidden'); }
   else if (m.t === 'draft') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); drawDraft(m); }
   else if (m.t === 'draftWait') { drState.picks = m.picks; drawDraftTeam(); drLock('Pick locked in – waiting for your opponent…'); }
   else if (m.t === 'draftOpp') { drState.opp = m.n; $('#drOpp').textContent = 'Opponent has picked ' + m.n + ' of 6.'; }
@@ -119,7 +120,7 @@ function initUI() {
   $('#goQuick').onclick = () => { show('deck'); if (deck.figs.length === 6) $('#btnQuick').click(); else toast('Build a team of 6 first, then press Quick match.'); };
   $('#btnDraft').onclick = () => { window.pvpMode = false; send({ t: 'quick', draft: true, name: $('#name').value }); };
   $('#btnDraftBot').onclick = () => { window.pvpMode = false; send({ t: 'draftBot', name: $('#name').value }); };
-  $('#btnCrazy').onclick = () => { window.pvpMode = false; send({ t: 'quick', crazy: true, name: $('#name').value }); };
+  $('#btnCrazy').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', crazy: true, deck, name: $('#name').value }); };
   $('#btnCrazyDraft').onclick = () => { window.pvpMode = false; send({ t: 'quick', crazy: true, draft: true, name: $('#name').value }); };
   $('#btnRandQ').onclick = () => { window.pvpMode = false; send({ t: 'quick', random: true, name: $('#name').value }); };
   $('#btnQuick').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', name: $('#name').value, deck }); };
@@ -254,7 +255,7 @@ function render() {
   { const cb = $('#crazyBar'); if (cb) { if (V.crazy && !V.over) { const left = Math.max(0, V.crazy.next - V.turn); cb.classList.remove('hidden'); cb.textContent = '🌀 Crazy Mode · ' + (V.crazy.last ? V.crazy.last.text + ' · ' : '') + (left > 0 ? 'next change in ~' + left + ' turn' + (left > 1 ? 's' : '') : 'a change is coming!'); } else cb.classList.add('hidden'); } }
   $('#topinfo').textContent = session ? 'Room ' + session.code : '';
   drawHud(me, opp);
-  drawBoard(); drawFightPrompt(mine); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null);
+  drawBoard(); crazyAnnounce(); drawCrazyRings(); drawFightPrompt(mine); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null);
   const L = $('#log'); L.innerHTML = ''; V.log.forEach(e => L.append(el('div', {}, e.msg))); L.scrollTop = L.scrollHeight;
   if (V.over) showEnd();
 }
@@ -313,6 +314,23 @@ function drawSlab(svg, defs) {
   // goal pads
   ['G0', 'G1'].forEach(g => { const q = PT(g); const mine = g === BOARD.goals[V.seat]; const top = q.y < 300; const y0 = top ? 8 : q.y - 52;
     svg.append(sv('rect', { x: q.x - 92, y: y0, width: 184, height: 112, rx: 26, fill: `url(#${mine ? 'slPadO' : 'slPadB'})`, stroke: mine ? '#ffb347' : '#53a8ff', 'stroke-opacity': 0.6, 'stroke-width': 3 }), sv('rect', { x: q.x - 92, y: y0, width: 184, height: 112, rx: 26, fill: 'url(#slHaz)' })); });
+}
+const CRAZY_FX = { swap: ['🔀', 'POSITION SWAP'], shuffle: ['🌪️', 'BOARD SHUFFLE'], storm: ['⚡', 'STATUS STORM'], sleep: ['😴', 'LIGHTS OUT'], replace: ['🎭', 'REPLACED!'], ability: ['✨', 'ABILITY SWAP'], trade: ['🤝', 'SWITCH SIDES'], recall: ['🎒', 'RECALL'], rally: ['🚩', 'RALLY'] };
+let crazySeen = null, crazyRings = null, crazyFresh = false;
+function crazyAnnounce() {
+  if (!V || !V.crazy) { crazySeen = null; return; }
+  const l = V.crazy.last, n = V.crazy.n; if (crazySeen === null) crazySeen = (V.crazy.n > 0 && !crazyFresh) ? n : 0; crazyFresh = true; if (n === crazySeen || !l) return; crazySeen = n;
+  const [ic, title] = CRAZY_FX[l.kind] || ['🌀', 'CRAZY!']; const old = $('#crazyOv'); if (old) old.remove();
+  const ov = el('div', { id: 'crazyOv', class: 'crazyov' }, el('div', { class: 'cz-ring' }), el('div', { class: 'cz-ic' }, ic), el('div', { class: 'cz-tt' }, '🌀 CRAZY MODE'), el('div', { class: 'cz-nm' }, title), el('div', { class: 'cz-tx' }, l.text.replace(/^[A-Z ]+ – /, '')));
+  document.body.append(ov); SFX.play('crazy'); const bd = $('#board'); bd.classList.remove('shake'); void bd.getBoundingClientRect(); bd.classList.add('shake');
+  setTimeout(() => ov.classList.add('out'), 3200); setTimeout(() => ov.remove(), 3700); setTimeout(() => bd.classList.remove('shake'), 900);
+  crazyRings = { uids: l.uids || [], until: performance.now() + 4500 };
+  const dis = () => { ov.classList.add('out'); setTimeout(() => ov.remove(), 450); }; ov.onclick = dis;
+}
+function drawCrazyRings() {
+  if (!crazyRings || performance.now() > crazyRings.until) return; const svg = $('#board'); if (!svg) return;
+  for (const u of crazyRings.uids) { const f = V.figs.find(x => x.uid === u); if (!f || f.loc !== 'field' || !f.pos) continue; const q = PT(f.pos); svg.append(sv('circle', { cx: q.x, cy: q.y, r: 40, fill: 'none', stroke: '#ff4fd8', 'stroke-width': 5, class: 'czring' })); }
+  setTimeout(() => svg.querySelectorAll('.czring').forEach(n => n.remove()), Math.max(300, crazyRings.until - performance.now()));
 }
 function drawBoard() {
   planAnims();

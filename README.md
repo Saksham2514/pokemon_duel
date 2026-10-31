@@ -179,6 +179,21 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.62 — Crazy Mode animations
+When a Crazy event happens: a full-screen swirl announcement (big icon, event name, plain-language explanation, tap to dismiss, auto-fades), a crazy sound, a board shake, and pulsing pink rings around the Pokémon affected. The pink banner keeps the last event on screen.
+
+## v10.61 — Crazy: Lights Out
+New Crazy event (9th): Lights Out puts every Pokémon on the field to sleep except one random awake Pokémon per side. Move next to a sleeping teammate to wake it, or use Full Heal.
+
+## v10.60 — Crazy Mode goes wild
+Every 5–7 turns, one of 8 events (never the same twice in a row): Position Swap (a Pokémon from each side trade places, Goal Block for both), Board Shuffle (every Pokémon on the field thrown to a new spot, Goal Block for both), Status Storm (2 Pokémon per side get a random burn/freeze/sleep/paralysis/poison/confusion), Replaced for 4–6 turns (one Pokémon per side becomes ANY random Pokémon, then changes back), Ability Swap (2 per side), Switch Sides (up to 2 trade teams), Recall (one per side dragged to the bench with Wait), Rally (all Wait cleared). Events never put a Pokémon on a goal point.
+
+## v10.59 — Crazy Mode: 5–7 turns, your own deck
+Crazy events now fire every 5–7 turns. Crazy match uses YOUR deck (guests: the team on the deck screen; signed-in: the selected owned deck, ownership still checked) instead of a random one. Still casual: no ladder, no rewards. Crazy Draft still drafts temporary teams.
+
+## v10.58 — Optional move + Wait fix
+Moves that say "You can move this Pokémon N steps. If you do, it gains Wait" (Darkrai Dark Leap, Keldeo Water Jump and the like) now give you the move choice and only add Wait if you actually move. Before, the Wait was applied immediately and the move was never offered.
+
 ## v10.57 — New modes for signed-in players
 The Campaign → PvP tab and the lobby's "Play PvP with my collection" panel now also have Draft match, Draft vs bot, Crazy match, Crazy Draft and Random-deck match (casual: no ladder, no rewards, no collection needed), with a searching note and Cancel search.
 
