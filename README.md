@@ -179,6 +179,66 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.82 — Aura Sphere choice
+
+- "Either the battle opponent or a Pokémon behind it in a straight line is knocked out" (Aura Sphere: Lucario, Mega Lucario, Dialga, Palkia) was always KO'ing the opponent. **The attacking player now chooses**; if no enemy stands behind, the opponent is KO'd with no prompt. Bots pick the higher-MP target.
+- 3 new checks (test/abilities.js now 163).
+
+## v10.81 — Draft card types
+
+- Draft pick cards showed types run together ("psychicfairy"); they now read "Psychic / Fairy".
+
+## v10.80 — Mega plates only from the Plate Unlock
+
+- Mega plates are **no longer sold for coins**. The **only** way to get one is the Gem Shop **Plate Unlock**: each unlock has a **10%** chance to be a random Mega plate you don't own (all other unlocks are normal plates, as before).
+- Plate Unlock now costs **20💎** and **rises by 3💎 for every Mega plate you own** (cap 90💎), so completing all 44 costs roughly 3,400💎 in total. Tune `MEGA_CHANCE`, `PLATE_BASE_GEMS`, `PLATE_STEP_GEMS` at the top of the plate section in `public/campaign.js`.
+- Collection shows your Mega plate count. Bosses, chests and the Tower still never drop Mega plates.
+
+## v10.79 — Draft Leave, Drilbur wheel, Melemele Wish
+
+- **Draft**: a **Leave** button now shows during the draft (and the team-reveal pause). Your opponent is told you left and no game starts.
+- **Drilbur wheel fixed**: Dig (Purple 36), Slash (White 70, size 32), Mud-Slap (White 30, size 20; a knocked-out opponent must Wait 1), Miss (Red 8) = 96. The source data only had Dig. New `waitKO` effect.
+- **Tapu Koko – Melemele Wish fixed**: the Pokémon you select now really gets MP3 *and* can MP-move over Pokémon that don't have Soar (it only got the MP3 before).
+- Known data gap: 27 more figures have wheels that don't add up to 96 (listed in the release notes); they need their real wheel data.
+
+## v10.78 — One plate per Mega, Gastly fix
+
+- **Mega plates**: every Mega form now has its **own plate** (44 of them, e.g. "Charizard X Plate"). The generic Mega Ring is gone. A Mega plate costs **0 plate points**, so you still bring a full 6 points of normal plates. Picking a Mega in a deck slot equips its plate automatically; the plate only works for the Pokémon holding that Mega slot.
+- **Hard to get**: in the campaign each Mega plate costs 8000🪙 in the Shop (new "Mega Plates" section) and never drops from chests/bosses. You also still need to own the Mega figure and its base Pokémon.
+- Random / draft / quick-match teams equip the right plate automatically.
+- Old saved decks that used the Mega Ring are cleaned up automatically (the Mega slot is dropped until you own the new plate).
+- **Fixed (Gastly, Gaseous Form)**: it can no longer be surrounded (it was KO'd on the goal), and it doesn't count as a surrounder for enemy Pokémon. The ability text wasn't being parsed. Tests added.
+
+## v10.77 — Evolution rules aligned with the original game
+
+- **Evolving needs a win**: the Evolve button now appears only after the Pokémon *wins* a battle (knocks out the opponent, or its Purple effect lands), not after any battle. The log says "won the battle and can evolve!".
+- **Evolution bonuses**: an evolved Pokémon permanently gets +10 on White/Gold attacks (when the attack does damage) and +1 star on Purple. Bonuses stay with the figure after it is knocked out.
+- **Mega Evolution** lasts **7 turns** (was 10–15). The **Mega Ring** is now free (cost 0, doesn't count toward the 6-point plate limit). It still acts on the same turn.
+- Rules panel updated. Not done: one Mega plate *per Mega* (e.g. Mewtwo X plate); we use one generic Mega Ring plate.
+
+## v10.76 — Match presentation
+
+- **VS intro** at the start of every match (trainer avatars, your team, VS / FIGHT!; tap to skip).
+- **Turn banner flash**: big "YOUR TURN" / "<name>'S TURN" sweep on every turn change.
+- **Scoreboard**: trainer avatars with a pulsing ring on the active player, and a live ⚔ KO tally.
+- Phone layout of the scoreboard fixed (no clipping). Full click-through of title, deck builder, a game, and every campaign tab at phone and desktop width: no errors, no failed requests, no horizontal overflow.
+
+## v10.75 — Evolutions in random, quick-match and draft games
+
+- Random teams (Random mode, quick-match bot fill, rematches, draft) now come with natural evolution chains (up to two stages, random branch for Eevee-style Pokémon). Megas appear only on teams that also carry the Mega Ring plate (about 60% of random teams that have a Mega available).
+- Bot-vs-human and random games therefore show the Evolve button and Mega Evolution just like deck-built games. Tests added.
+
+## v10.74 — Purple beats White fix, Bright Arrow
+
+- **Fixed**: a White move's "knock out the opponent if…" clause (Hariyama's Heavy Slam vs MP3+, and similar type-based ones) no longer fires when the opponent spun Purple. Purple beats White, so only Purple's effect applies. Gold still beats Purple. New test runs 400 Hariyama vs Eevee battles; before the fix 21 of 21 Purple spins still knocked Eevee out.
+- **Bright Arrow (Eevee UX) implemented**: MP can't drop below 3 except via markers; it evolves when moved from the P.C. to the bench (same as Spontaneous Evolution).
+
+## v10.73 — Eevee's Spontaneous Evolution
+
+- Eevee now evolves when it moves from the P.C. to the bench (Revive plate, P.C. overflow, abilities). It uses the form chosen in the deck's `＋ Evolution` slot, otherwise a random Eeveelution.
+- Being knocked out is unchanged (Eevee goes to the P.C. as normal). The evolution happens on the way back.
+- Tests added to `test/evolution.js`.
+
 ## v10.72 — Evolution browser verification and Mega fix
 
 - Verified in a real browser: the Evolve button, evolve overlay and form change, the Mega Ring flow (overlay, 💎 badge), phone layout, and saving/loading decks with evolutions through the real save endpoint (old decks without evolution fields still load).
@@ -200,7 +260,7 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 ## v10.69 — Evolutions, Mega Evolution, form changes
 
 - **Evolutions in decks**: under each deck slot, `＋ Evolution` lets you queue the later stages (e.g. Charmander → Charmeleon → Charizard). They don't use deck slots, but in the campaign you must own each stage. After a Pokémon survives its first battle, a free **Evolve** button appears in the main phase.
-- **Mega Evolution**: `＋ Mega` on a slot + the new **Mega Ring** plate (cost 2). The Pokémon stays Mega for 10–15 turns, then reverts (also reverts if it leaves the field).
+- **Mega Evolution**: `＋ Mega` on a slot + the Mega's own plate (free, no plate cost). The Pokémon stays Mega for 7 turns, then reverts (also reverts if it leaves the field).
 - **Form-change-on-KO now works** (Magikarp, Nincada, Feebas, Larvesta evolve instead of KO; Keldeo, Black/White Kyurem, Zygarde 10% change form) even if the form isn't in your deck.
 - Balance: "+1 MP when evolved" abilities (e.g. Lycanroc) now require a real evolution.
 - Not yet: Pancham/Skrelp/Eevee-style special triggers, Aegislash/Giratina stance swaps.

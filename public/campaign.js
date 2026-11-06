@@ -36,8 +36,14 @@
   const byRar = r => DATA.figures.filter(f => f.rarity === r);
 
   const STARTER_PLATES = ['plus_power', 'speed_boost', 'full_heal', 'switch'];
-  const platePrice = k => (PL[k].cost >= 2 ? 4000 : 1500);
-  function plateDrop(lines, why) { const left = Object.keys(PL).filter(k => !S.plates[k]); if (!left.length) return null; const k = left[(Math.random() * left.length) | 0]; S.plates[k] = 1; lines.push(`🔶 New plate: ${PL[k].name} (${why})! ${PL[k].text}`); return k; }
+  const platePrice = k => (PL[k].need === 'mega' ? 8000 : PL[k].cost >= 2 ? 4000 : 1500);   // Mega plates are meant to be hard to get
+  // Plate Unlock (Gem Shop) is the ONLY way to get Mega plates: each unlock has MEGA_CHANCE to be a Mega plate, and the price rises with every Mega plate you own.
+  const MEGA_CHANCE = 0.1, PLATE_BASE_GEMS = 20, PLATE_STEP_GEMS = 3;
+  const megaKeys = () => Object.keys(PL).filter(k => PL[k].need === 'mega');
+  const plateUnlockCost = () => Math.min(90, PLATE_BASE_GEMS + PLATE_STEP_GEMS * megaKeys().filter(k => S.plates[k]).length);
+  function plateDrop(lines, why, allowMega) { const left = Object.keys(PL).filter(k => !S.plates[k] && !PL[k].need); const ml = allowMega ? megaKeys().filter(k => !S.plates[k]) : []; if (!left.length && !ml.length) return null;
+    const pool = ml.length && (!left.length || Math.random() < MEGA_CHANCE) ? ml : left; const k = pool[(Math.random() * pool.length) | 0]; S.plates[k] = 1;
+    lines.push(PL[k].need === 'mega' ? `💎✨ MEGA PLATE: ${PL[k].name} (${why})! ${PL[k].text}` : `🔶 New plate: ${PL[k].name} (${why})! ${PL[k].text}`); return k; }
   let memOwner = null;
   try { Object.keys(localStorage).filter(k => k.startsWith(KEY)).forEach(k => localStorage.removeItem(k)); } catch (e) { } // saves live on the server only; remove old browser copies
   function load() {
@@ -111,13 +117,14 @@
     const take = list => { if (b.skill > 0.45) list = list.slice().sort((x, y) => y.mp - x.mp); let g = 0; while (list.length && ids.length < 6 && g++ < 400) { const f = list[Math.floor((b.skill > 0.45 ? rng() * rng() : rng()) * list.length)]; const nm = baseName(f); if (used[nm]) continue; used[nm] = 1; ids.push(f.id); } };
     if (b.types.length) take(themed.length > 12 ? themed.filter(f => f.rarity === b.rar[b.rar.length - 1]).length > 5 ? themed.filter(f => f.rarity === b.rar[b.rar.length - 1]) : themed : themed);
     take(pool);
-    const keys = Object.keys(PL).sort(() => rng() - 0.5); const pl = []; let c = 0; for (const k of keys) if (c + PL[k].cost <= 6) { pl.push(k); c += PL[k].cost; }
+    const keys = Object.keys(PL).filter(k => !PL[k].need).sort(() => rng() - 0.5); const pl = []; let c = 0; for (const k of keys) if (c + PL[k].cost <= 6) { pl.push(k); c += PL[k].cost; }
     return (b._deck = { figs: ids, plates: pl });
   }
 
   // ---------------------------------------------------------------- deck helpers
   const curDeck = () => S.decks[Math.min(S.active, S.decks.length - 1)];
   const deckIds = d => [...d.figs, ...EvoUI.extraIds(d)];
+  const owns = () => EvoUI.setOwns(k => !!(S && S.plates && S.plates[k]));
   const deckOk = d => d && d.figs.length === 6 && deckIds(d).every(i => S.owned[i]) && (() => { const need = {}; deckIds(d).forEach(i => (need[i] = (need[i] || 0) + 1)); return Object.keys(need).every(i => need[i] <= S.owned[i]); })();
   const plateCost = d => d.plates.reduce((a, k) => a + PL[k].cost, 0);
   function canAdd(d, id) {
@@ -300,11 +307,11 @@
     editDeck = Math.min(editDeck, S.decks.length - 1); const d = S.decks[editDeck];
     const tabs = el('div', { class: 'tabs' }, ...S.decks.map((x, i) => el('button', { class: i === editDeck ? 'on' : '', onclick: () => { editDeck = i; render(); } }, x.name + (i === S.active ? ' ★' : ''))),
       S.decks.length < 5 ? el('button', { onclick: () => { S.decks.push({ name: 'Deck ' + (S.decks.length + 1), figs: [], plates: [] }); editDeck = S.decks.length - 1; save(); render(); } }, '+ New deck') : '');
-    const slots = el('div', { class: 'slots' }); EvoUI.norm(d);
+    const slots = el('div', { class: 'slots' }); owns(); EvoUI.norm(d);
     for (let i = 0; i < 6; i++) { const id = d.figs[i]; const s = el('div', { class: 'slot', onclick: () => { if (id) { EvoUI.removeSlot(d, i); save(); render(); } } }); if (id) { s.append(img(fig(id)), fig(id).name); s.onmouseenter = () => infoCard($c('campInfo'), fig(id)); } else s.append('Empty'); slots.append(el('div', { class: 'slotwrap' }, s, EvoUI.extras(d, i, xid => ownFree(d, xid), () => { save(); render(); }))); }
     const pl = el('div', { class: 'plates' });
     d.plates = d.plates.filter(k => S.plates[k]);
-    for (const k of Object.keys(PL)) { const Pp = PL[k]; const on = d.plates.includes(k); const lock = !S.plates[k]; pl.append(el('div', { class: 'plate' + (on ? ' on' : '') + (lock ? ' locked' : ''), title: lock ? 'Locked – buy it in the Shop, or win it from bosses and chests.' : Pp.text, onclick: () => { if (lock) return; if (on) d.plates = d.plates.filter(x => x !== k); else if (plateCost(d) + Pp.cost <= 6) d.plates.push(k); save(); render(); } }, el('span', { class: 'dot', style: 'background:' + (COL[Pp.color] || '#f78fb3') }), Pp.name, el('span', { class: 'muted' }, ' ' + Pp.cost), lock ? el('span', { class: 'lock' }, ' 🔒') : '', el('div', { class: 'small muted' }, Pp.text))); }
+    for (const k of Object.keys(PL).filter(k => !PL[k].need)) { const Pp = PL[k]; const on = d.plates.includes(k); const lock = !S.plates[k]; pl.append(el('div', { class: 'plate' + (on ? ' on' : '') + (lock ? ' locked' : ''), title: lock ? 'Locked – buy it in the Shop, or win it from bosses and chests.' : Pp.text, onclick: () => { if (lock) return; if (on) d.plates = d.plates.filter(x => x !== k); else if (plateCost(d) + Pp.cost <= 6) d.plates.push(k); save(); render(); } }, el('span', { class: 'dot', style: 'background:' + (COL[Pp.color] || '#f78fb3') }), Pp.name, el('span', { class: 'muted' }, ' ' + Pp.cost), lock ? el('span', { class: 'lock' }, ' 🔒') : '', el('div', { class: 'small muted' }, Pp.text))); }
     const g = el('div', { class: 'figgrid' });
     Object.keys(S.owned).map(Number).filter(i => fig(i)).sort((a, b) => RAR.indexOf(fig(b).rarity) - RAR.indexOf(fig(a).rarity) || fig(a).name.localeCompare(fig(b).name)).forEach(id => {
       const inDeck = d.figs.filter(x => x === id).length; const f = fig(id); const can = canAdd(d, id);
@@ -318,7 +325,7 @@
   }
   function autoFill(d) {
     const ids = Object.keys(S.owned).map(Number).filter(i => fig(i)).sort((a, b) => RAR.indexOf(fig(b).rarity) - RAR.indexOf(fig(a).rarity) || fig(b).mp - fig(a).mp);
-    EvoUI.clear(d); EvoUI.norm(d); for (const id of ids) { while (canAdd(d, id) && d.figs.filter(x => x === id).length < 1) d.figs.push(id); if (d.figs.length >= 6) break; }
+    EvoUI.clear(d); owns(); EvoUI.norm(d); for (const id of ids) { while (canAdd(d, id) && d.figs.filter(x => x === id).length < 1) d.figs.push(id); if (d.figs.length >= 6) break; }
     if (d.figs.length < 6) for (const id of ids) { while (canAdd(d, id)) d.figs.push(id); if (d.figs.length >= 6) break; }
   }
 
@@ -340,11 +347,11 @@
       st.append(el('div', { class: 'cfig' + (can ? '' : ' dim'), style: 'border-color:' + RCOL[f.rarity], onmouseenter: () => infoCard($c('campInfo'), f) }, img(f), el('span', { class: 'mp' }, f.mp), rarTag(f), S.owned[id] ? el('span', { class: 'cnt' }, 'own ×' + S.owned[id]) : '', el('div', { class: 'nm' }, f.name),
         el('button', { class: 'buy', onclick: () => { if (S.coins < price) return; S.coins -= price; S.owned[id] = (S.owned[id] || 0) + 1; S.stock = S.stock.filter(x => x !== id); save(); render(); } }, '🪙' + price))); });
     const pb = el('div', { class: 'platebuy' });
-    Object.keys(PL).forEach(k => { const Pp = PL[k]; const own = !!S.plates[k]; const pr = platePrice(k);
+    Object.keys(PL).filter(k => !PL[k].need).forEach(k => { const Pp = PL[k]; const own = !!S.plates[k]; const pr = platePrice(k);
       pb.append(el('div', { class: 'pb' + (own ? ' own' : ''), style: '--pc:' + (COL[Pp.color] || '#f78fb3') }, el('b', {}, Pp.name), el('span', { class: 'muted' }, ' · ' + Pp.color + ' · cost ' + Pp.cost), el('div', { class: 'small muted' }, Pp.text),
         own ? el('div', { class: 'small' }, '✓ Owned') : el('button', { class: 'buy', disabled: S.coins >= pr ? null : '', onclick: () => { if (S.coins < pr) return; S.coins -= pr; S.plates[k] = 1; save(); render(); } }, '🪙' + pr))); });
     pb.querySelectorAll('button').forEach(b => { if (b.getAttribute('disabled') === null) b.removeAttribute('disabled'); });
-    body.append(el('div', { class: 'collgrid' }, el('div', {}, el('h4', {}, 'Chests'), chests, el('h4', {}, `Plates (${Object.keys(S.plates).length}/${Object.keys(PL).length} owned)`), el('div', { class: 'small muted' }, 'Plates are one-use boosts you take into a duel (6 plate-points per deck). Buy them here, or win them from chapter bosses, chests and the Tower.'), pb, el('h4', {}, 'Today\'s stock ', el('button', { class: 'ghost', disabled: S.gems >= rc ? null : '', title: 'Each restock in the same cycle costs more', onclick: () => { if (S.gems < rc) return; S.gems -= rc; S.restocks++; S.stock = makeStock(); save(); render(); } }, `Restock · 💎${rc}`), el('span', { class: 'small muted' }, ` Free refresh in ${Math.floor(leftMs / 3600e3)}h ${Math.floor(leftMs % 3600e3 / 60e3)}m · price rises with every restock (used ${S.restocks || 0}×)`)), st), el('div', { id: 'campInfo', class: 'card campcard' })));
+    body.append(el('div', { class: 'collgrid' }, el('div', {}, el('h4', {}, 'Chests'), chests, el('h4', {}, `Plates (${Object.keys(S.plates).filter(k => PL[k] && !PL[k].need).length}/${Object.keys(PL).filter(k => !PL[k].need).length} owned · 💎 Mega ${megaKeys().filter(k => S.plates[k]).length}/${megaKeys().length})`), el('div', { class: 'small muted' }, 'Plates are one-use boosts you take into a duel (6 plate-points per deck). Buy them here, or win them from chapter bosses, chests and the Tower.'), pb, el('h4', {}, 'Today\'s stock ', el('button', { class: 'ghost', disabled: S.gems >= rc ? null : '', title: 'Each restock in the same cycle costs more', onclick: () => { if (S.gems < rc) return; S.gems -= rc; S.restocks++; S.stock = makeStock(); save(); render(); } }, `Restock · 💎${rc}`), el('span', { class: 'small muted' }, ` Free refresh in ${Math.floor(leftMs / 3600e3)}h ${Math.floor(leftMs % 3600e3 / 60e3)}m · price rises with every restock (used ${S.restocks || 0}×)`)), st), el('div', { id: 'campInfo', class: 'card campcard' })));
   }
 
   const GEM_CHESTS = [
@@ -383,9 +390,9 @@
     const g = el('div', { class: 'chests' });
     GEM_CHESTS.forEach(c => g.append(el('div', { class: 'chest', style: '--cc:' + c.col }, el('div', { class: 'cicon' }, c.icon), el('b', {}, c.name), el('div', { class: 'small muted' }, c.note),
       el('button', { class: 'primary', ...(S.gems >= c.gem ? {} : { disabled: '' }), onclick: () => openChest(c) }, `Open · 💎${c.gem}`))));
-    const left = Object.keys(PL).filter(k => !S.plates[k]).length;
-    g.append(el('div', { class: 'chest', style: '--cc:#ffcb05' }, el('div', { class: 'cicon' }, '🔶'), el('b', {}, 'Plate Unlock'), el('div', { class: 'small muted' }, left ? `Unlocks a random plate you don't own (${left} left).` : 'You own every plate.'),
-      el('button', { class: 'primary', ...(S.gems >= 15 && left ? {} : { disabled: '' }), onclick: () => { if (S.gems < 15) return; const ln = []; if (!plateDrop(ln, 'Gem shop')) return; S.gems -= 15; save(); alert(ln.join('\n')); render(); } }, 'Unlock · 💎15')));
+    const left = Object.keys(PL).filter(k => !S.plates[k] && !PL[k].need).length, mleft = megaKeys().filter(k => !S.plates[k]).length, pc = plateUnlockCost();
+    g.append(el('div', { class: 'chest', style: '--cc:#ffcb05' }, el('div', { class: 'cicon' }, '🔶'), el('b', {}, 'Plate Unlock'), el('div', { class: 'small muted' }, left || mleft ? `Unlocks a random plate you don't own (${left} left). ${mleft ? `${Math.round(MEGA_CHANCE * 100)}% chance of a 💎 Mega plate (${mleft} of ${megaKeys().length} left) – the only way to get them. Price rises by ${PLATE_STEP_GEMS}💎 for every Mega plate you own.` : 'You own every Mega plate.'}` : 'You own every plate.'),
+      el('button', { class: 'primary', ...(S.gems >= pc && (left || mleft) ? {} : { disabled: '' }), onclick: () => { const cost = plateUnlockCost(); if (S.gems < cost) return; const ln = []; if (!plateDrop(ln, 'Gem shop', true)) return; S.gems -= cost; save(); alert(ln.join('\n')); render(); } }, 'Unlock · 💎' + pc)));
     const has = S.pickOffer && S.pickOffer.length;
     g.append(el('div', { class: 'chest', style: '--cc:#9be56a' }, el('div', { class: 'cicon' }, '🎯'), el('b', {}, 'Pick-a-Pokémon'), el('div', { class: 'small muted' }, has ? 'You have an unclaimed offer!' : 'See 3 Rare-or-better Pokémon and keep the one you want.'),
       el('button', { class: 'primary', ...(has || S.gems >= 35 ? {} : { disabled: '' }), onclick: () => { if (!has) { if (S.gems < 35) return; const ids = []; let guard = 0; while (ids.length < 3 && guard++ < 60) { const f = rollFig({ R: 62, EX: 30, UX: 8 }, null, true); if (!ids.includes(f.id)) ids.push(f.id); } S.gems -= 35; S.pickOffer = ids; save(); } pickOffer(S.pickOffer); } }, has ? 'Choose now' : 'Offer · 💎35')));

@@ -26059,6 +26059,27 @@
                 "Damage": "☆☆"
             },
             {
+                "Base Wheel Size": "32",
+                "Name": "Slash",
+                "Move Type": "White",
+                "Additional Notes": "",
+                "Damage": "70"
+            },
+            {
+                "Base Wheel Size": "20",
+                "Name": "Mud-Slap",
+                "Move Type": "White",
+                "Additional Notes": "If knocked out, the opponent becomes Wait 1",
+                "Damage": "30"
+            },
+            {
+                "Base Wheel Size": "8",
+                "Name": "Miss",
+                "Move Type": "Red",
+                "Additional Notes": "",
+                "Damage": ""
+            },
+            {
                 "Base Wheel Size": "96",
                 "Name": "Tectonic Rage",
                 "Move Type": "Purple Z-Move",

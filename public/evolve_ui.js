@@ -5,14 +5,20 @@ window.EvoUI = (function () {
   const megaBase = n => sp(n).replace(/^(?:Mega|Primal)\s+/, '').replace(/\s+[XY]$/, '');
   const canEvo = (a, b) => ((DATA.evo && DATA.evo.next[sp(a)]) || []).includes(sp(b));
   const canMega = (a, m) => isMega(m) && megaBase(m) === sp(a);
-  function norm(d) { d.evo = d.evo || []; d.mega = d.mega || []; for (let i = 0; i < 6; i++) { d.evo[i] = d.evo[i] || []; d.mega[i] = d.mega[i] || 0; } d.evo.length = 6; d.mega.length = 6; return d; }
+  // Every Mega form has its own plate (PL[key].mega === the Mega's name). The plate is equipped automatically with the Mega and costs no plate points.
+  const plateKeyFor = id => { const f = FIG[id]; if (!f) return null; const n = sp(f.name); return Object.keys(PL).find(k => PL[k].need === 'mega' && PL[k].mega === n) || null; };
+  let owns = null;   // campaign sets this: key -> do you own that plate?
+  function norm(d) { d.evo = d.evo || []; d.mega = d.mega || []; d.plates = d.plates || []; for (let i = 0; i < 6; i++) { d.evo[i] = d.evo[i] || []; d.mega[i] = d.mega[i] || 0; } d.evo.length = 6; d.mega.length = 6;
+    d.plates = d.plates.filter(k => PL[k]);
+    for (let i = 0; i < 6; i++) { if (!d.mega[i]) continue; const k = plateKeyFor(d.mega[i]); if (!k || (owns && !owns(k))) d.mega[i] = 0; }
+    const want = d.mega.filter(Boolean).map(plateKeyFor); d.plates = d.plates.filter(k => PL[k].need !== 'mega' || want.includes(k)); want.forEach(k => { if (!d.plates.includes(k)) d.plates.push(k); }); return d; }
   function removeSlot(d, i) { norm(d); d.figs.splice(i, 1); d.evo.splice(i, 1); d.mega.splice(i, 1); norm(d); }
-  function clear(d) { d.figs = []; d.evo = []; d.mega = []; }
+  function clear(d) { d.figs = []; d.evo = []; d.mega = []; d.plates = (d.plates || []).filter(k => !PL[k] || PL[k].need !== 'mega'); }
   const extraIds = d => [...(d.evo || []).flat(), ...(d.mega || []).filter(Boolean)];
   function options(d, i, kind, avail) {
     norm(d); const base = FIG[d.figs[i]]; if (!base) return []; const chain = [base, ...d.evo[i].map(id => FIG[id])];
     if (kind === 'evo') { if (chain.length >= 3) return []; const last = chain[chain.length - 1]; return DATA.figures.filter(f => canEvo(last.name, f.name) && avail(f.id)); }
-    return DATA.figures.filter(f => chain.some(c => canMega(c.name, f.name)) && avail(f.id));
+    return DATA.figures.filter(f => chain.some(c => canMega(c.name, f.name)) && avail(f.id) && (!owns || (plateKeyFor(f.id) && owns(plateKeyFor(f.id)))));
   }
   function pick(title, list, onPick) {
     const ov = el('div', { class: 'overlay chestov' }); const grid = el('div', { class: 'figgrid', style: 'max-height:60vh;overflow:auto' });
@@ -27,8 +33,8 @@ window.EvoUI = (function () {
     if (d.mega[i]) w.append(el('span', { class: 'xchip mega', title: 'Click to remove', onclick: e => { e.stopPropagation(); d.mega[i] = 0; onChange(); } }, '💎 ' + FIG[d.mega[i]].name + ' ✕'));
     const eo = options(d, i, 'evo', avail), mo = d.mega[i] ? [] : options(d, i, 'mega', avail);
     if (eo.length) w.append(el('button', { class: 'xbtn', title: 'Choose what this Pokémon can evolve into after a battle', onclick: e => { e.stopPropagation(); pick('Evolve ' + FIG[id].name + ' into…', eo, p => { d.evo[i].push(p); onChange(); }); } }, '＋ Evolution'));
-    if (mo.length) w.append(el('button', { class: 'xbtn mega', title: 'Needs the Mega Ring plate in your deck', onclick: e => { e.stopPropagation(); pick('Mega form for ' + FIG[id].name, mo, p => { d.mega[i] = p; onChange(); }); } }, '＋ Mega'));
+    if (mo.length) w.append(el('button', { class: 'xbtn mega', title: 'Equips this Mega form\'s own plate (free, no plate points). In the campaign you must own the plate.', onclick: e => { e.stopPropagation(); pick('Mega form for ' + FIG[id].name, mo, p => { d.mega[i] = p; onChange(); }); } }, '＋ Mega'));
     return w;
   }
-  return { norm, removeSlot, clear, extras, extraIds, canEvo, canMega, isMega };
+  return { setOwns: f => { owns = f; }, plateKeyFor, norm, removeSlot, clear, extras, extraIds, canEvo, canMega, isMega };
 })();

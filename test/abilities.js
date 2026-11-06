@@ -422,6 +422,41 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
   r = mkG(231); E._t.runOps(r.g, seg(231, 'Sheer Cold').ops, { self: r.me, opp: r.op, oppPos: 'I00', selfPos: 'I01' }); ok(r.op.loc !== 'removed' && r.op.loc !== 'field', 'Sheer Cold only KOs a clean opponent');
   ok(seg(118, 'Dragon Tail').ops.some(o => o.op === 'wait'), 'Dragon Tail makes the benched opponent wait');
 }
+// 35 Purple beats White: Heavy Slam's "knock out MP3+" must not fire when the opponent spun Purple; and still fires vs White
+{ const LL = require('../lib/figures').LIST; const hid = LL.find(x => x.name === 'Hariyama').id, eid = LL.find(x => x.name === 'Eevee' && x.segs.some(s => s.name === 'Baby-Doll Eyes')).id; let purpleKO = 0, purpleSeen = 0, whiteKO = 0, hs = 0;
+  for (let i = 0; i < 400; i++) { const gg = E.newGame([{ figs: [hid, ...LL.filter(x => !x.rules.length && x.id !== eid && x.id !== hid).slice(0, 5).map(x => x.id)], plates: [] }, { figs: [eid, ...LL.filter(x => !x.rules.length && x.id !== eid && x.id !== hid).slice(6, 11).map(x => x.id)], plates: [] }], ['A', 'B'], i + 1);
+    const H = Object.values(gg.figs).find(f => f.owner === 0 && f.fid === hid), Ev = Object.values(gg.figs).find(f => f.owner === 1 && f.fid === eid); place(gg, H, 'I10'); place(gg, Ev, require('../lib/board').ADJ['I10'][0]); gg.cur = 0; gg.phase = 'main'; gg.moved = false;
+    const b = gg.log.length; try { T.battle(gg, H.uid, Ev.uid); } catch (e) { continue; } const L = gg.log.slice(b).map(x => x.msg).join('\n');
+    if (/Hariyama → Heavy Slam \(White/.test(L)) { hs++; if (/Eevee → Baby-Doll Eyes \(Purple\)/.test(L)) { purpleSeen++; if (/Eevee is knocked out/.test(L)) purpleKO++; } else if (/Eevee → .*\(White/.test(L) && /Eevee is knocked out/.test(L)) whiteKO++; } }
+  ok(hs > 5 && purpleSeen > 0, 'sample has Heavy Slam vs Purple spins (hs ' + hs + ', purple ' + purpleSeen + ')'); ok(purpleSeen === 0 || purpleKO === 0, 'Heavy Slam does not knock out an Eevee that spun Purple (' + purpleKO + '/' + purpleSeen + ')'); }
+// 36 Gaseous Form (Gastly): cannot be surrounded and does not count as a surrounder
+{ const LL = require('../lib/figures').LIST, BB = require('../lib/board'); const gid = LL.find(x => x.name === 'Gastly').id; const oth = LL.filter(x => !x.rules.length && x.id !== gid).slice(0, 12).map(x => x.id);
+  const g = E.newGame([{ figs: [gid, ...oth.slice(0, 5)], plates: [] }, { figs: oth.slice(6, 12), plates: [] }], ['A', 'B'], 7); const G = Object.values(g.figs).find(f => f.owner === 0 && f.fid === gid); place(g, G, BB.GOALS[0]);
+  const foes = Object.values(g.figs).filter(f => f.owner === 1); BB.ADJ[BB.GOALS[0]].forEach((p, i) => place(g, foes[i], p)); T.surroundCheck && T.surroundCheck(g, 1); ok(G.loc === 'field', 'Gastly is not knocked out when surrounded'); 
+  const V = Object.values(g.figs).find(f => f.owner === 0 && f.fid !== gid); place(g, V, 'I10'); const gg = E.newGame([{ figs: oth.slice(0, 6), plates: [] }, { figs: [gid, ...oth.slice(6, 11)], plates: [] }], ['A', 'B'], 8); const Gs = Object.values(gg.figs).find(f => f.owner === 1 && f.fid === gid); const Vv = Object.values(gg.figs).find(f => f.owner === 0); place(gg, Vv, 'I10'); const adj = BB.ADJ['I10']; const fo = Object.values(gg.figs).filter(f => f.owner === 1); place(gg, Gs, adj[0]); adj.slice(1).forEach((p, i) => place(gg, fo.filter(f => f !== Gs)[i], p)); if (T.surroundCheck) T.surroundCheck(gg, 1); ok(Vv.loc === 'field', 'a Pokémon ringed by enemies including Gastly survives'); }
+// 37 Drilbur wheel is complete (Dig / Slash / Mud-Slap / Miss = 96); Mud-Slap makes a knocked-out opponent Wait 1
+{ const LL = require('../lib/figures').LIST; const dr = LL.find(x => x.id === 493); ok(dr.segs.reduce((a, x) => a + x.size, 0) === 96 && dr.segs.length === 4, 'Drilbur wheel has 4 segments totalling 96'); ok(dr.segs.some(x => x.name === 'Slash' && x.color === 'White' && x.dmg.n === 70) && dr.segs.some(x => x.name === 'Miss' && x.color === 'Red'), 'Drilbur has Slash 70 and a Miss');
+  const did = dr.id; const weak = LL.filter(x => !x.rules.length && x.id !== did).slice(0, 12).map(x => x.id); let waited = 0, n = 0;
+  for (let i = 0; i < 500 && !waited; i++) { const gg = E.newGame([{ figs: [did, ...weak.slice(0, 5)], plates: [] }, { figs: weak.slice(6, 12), plates: [] }], ['A', 'B'], 300 + i); const D = Object.values(gg.figs).find(f => f.owner === 0 && f.fid === did), O = Object.values(gg.figs).find(f => f.owner === 1); place(gg, D, 'I10'); place(gg, O, require('../lib/board').ADJ['I10'][0]); gg.cur = 0; gg.phase = 'main'; gg.moved = false; gg.turn = 5; const b = gg.log.length; try { T.battle(gg, D.uid, O.uid); } catch (e) { continue; } n++;
+    const L = gg.log.slice(b).map(x => x.msg).join('\n'); if (/Mud-Slap/.test(L) && O.loc !== 'field') { if (/will have to Wait 1/.test(L) && O.wait >= 1) waited++; } }
+  ok(waited > 0, 'a Pokémon knocked out by Mud-Slap has to Wait 1'); }
+// 38 Tapu Koko's Melemele Wish: the selected Pokémon gets MP3 and can fly over Pokémon that do not have Soar
+{ const LL = require('../lib/figures').LIST, BB = require('../lib/board'); const kid = 338; const fl = LL.filter(x => !x.rules.length && x.mp >= 2 && !/Soar/.test(x.ability)).slice(0, 14).map(x => x.id);
+  const gg = E.newGame([{ figs: [kid, ...fl.slice(0, 5)], plates: [] }, { figs: fl.slice(6, 12), plates: [] }], ['A', 'B'], 3); const pl2 = (f, p) => { f.loc = 'field'; T.setPos(gg, f, p); };
+  const K = Object.values(gg.figs).find(f => f.owner === 0 && f.fid === kid), X = Object.values(gg.figs).find(f => f.owner === 0 && f !== K); pl2(K, 'I00'); gg.cur = 0; gg.phase = 'main'; gg.turn = 5; gg.moved = false;
+  T.runOps(gg, [{ op: 'wishKoko', mp: 3 }], { self: K, opp: null }); T.resolveTasks(gg); E.apply(gg, 0, { t: 'choose', to: X.uid });
+  ok(X.mpSet === 3 && X.flyWish && K.loc === 'removed', 'the wish gives MP3, flying, and excludes Tapu Koko');
+  const adj = BB.ADJ['I10']; const foes = Object.values(gg.figs).filter(f => f.owner === 1); pl2(X, 'I10'); X.wait = 0; X.st = []; adj.forEach((p, i) => pl2(foes[i], p)); gg.cur = 0; gg.phase = 'main'; gg.moved = false; gg.turn = 6;
+  const withFly = (E.legal(gg).moves[X.uid] || []).length; X.flyWish = false; const without = (E.legal(gg).moves[X.uid] || []).length; ok(withFly > without + 3, 'the wished Pokémon can MP-move past enemies (' + withFly + ' destinations vs ' + without + ')'); }
+// Aura Sphere: the attacker's owner chooses whether the battle opponent or the Pokémon behind it is knocked out
+{ const LL = require('../lib/figures').LIST, BB = require('../lib/board'); const fl = LL.filter(x => !x.rules.length && x.mp >= 2).slice(0, 14).map(x => x.id);
+  const mk = () => { const gg = E.newGame([{ figs: fl.slice(0, 6), plates: [] }, { figs: fl.slice(6, 12), plates: [] }], ['A', 'B'], 5); const pl2 = (f, p) => { f.loc = 'field'; T.setPos(gg, f, p); };
+    const mine = Object.values(gg.figs).filter(f => f.owner === 0), foes = Object.values(gg.figs).filter(f => f.owner === 1); return { gg, pl2, A: mine[0], D: foes[0], Y: foes[1] }; };
+  { const { gg, pl2, A, D, Y } = mk(); const p1 = 'I00', p2 = BB.ADJ[p1][0], p3 = BB.beyond(p1, p2); pl2(A, p1); pl2(D, p2); pl2(Y, p3); gg.cur = 0; gg.phase = 'main';
+    T.runOps(gg, [{ op: 'koOppOrBehind' }], { self: A, opp: D }); ok(gg.tasks.length === 1 && gg.tasks[0].seat === 0 && gg.tasks[0].cands.length === 2, 'Aura Sphere offers the attacker a choice of two targets');
+    T.resolveTasks(gg); E.apply(gg, 0, { t: 'choose', to: Y.uid }); ok(Y.loc !== 'field' && D.loc === 'field', 'the attacker can choose the Pokémon behind'); }
+  { const { gg, pl2, A, D, Y } = mk(); pl2(A, 'I00'); pl2(D, BB.ADJ['I00'][0]); Y.loc = 'pc'; gg.cur = 0; gg.phase = 'main'; T.runOps(gg, [{ op: 'koOppOrBehind' }], { self: A, opp: D }); T.resolveTasks(gg);
+    ok(D.loc !== 'field' && gg.phase !== 'choose', 'with nobody behind, the battle opponent is simply knocked out'); } }
 console.log(`ability tests: ${pass} passed, ${fail} failed`);
 
 // optional battle: skipping ends the turn without a fight; the battle ends the turn

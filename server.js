@@ -3,7 +3,7 @@ const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
 const E = require('./lib/engine'); const { FIGS, LIST } = require('./lib/figures'); const { PLATES } = require('./lib/plates');
 const DB = require('./lib/db');
-const B = require('./lib/board'); const DR = require('./lib/draft'); const { botDeck, randomDeck, botAct, botSearch } = require('./lib/bot');
+const B = require('./lib/board'); const DR = require('./lib/draft'); const { botDeck, randomDeck, autoEvo, botAct, botSearch } = require('./lib/bot');
 
 const PORT = process.env.PORT || 3000;
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
@@ -76,9 +76,9 @@ function draftPick(room, seat, idx) {
   if (d.got[0] == null || d.got[1] == null) return;
   clearTimeout(d.timer); d.round++;
   if (d.round < 6) return setTimeout(() => draftRound(room), 600);
-  room.seats.forEach((s2, i) => { s2.deck = { figs: d.picks[i].slice(), plates: DR.plateSet() }; });
+  room.seats.forEach((s2, i) => { s2.deck = { figs: d.picks[i].slice(), plates: DR.plateSet() }; autoEvo(s2.deck, Math.random, Math.random() < 0.6); });
   room.seats.forEach((s2, i) => { if (s2.ws) send(s2.ws, { t: 'draftDone', mine: d.picks[i], theirs: d.picks[1 - i], plates: s2.deck.plates }); });
-  room.dr = null; setTimeout(() => { if (!room.game) startGame(room); }, 4500);
+  room.dr = null; setTimeout(() => { if (!room.game && !room.cancelled) startGame(room); }, 4500);
 }
 function startGame(room) {
   const decks = room.seats.map(s => s.deck); const names = room.seats.map(s => s.name);
@@ -155,6 +155,7 @@ wss.on('connection', ws => {
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token }); startDraft(room); return;
     }
     if (m.t === 'draftPick') { const room = c.room; if (room && room.dr) draftPick(room, c.seat, +m.idx); return; }
+    if (m.t === 'leaveDraft') { const r = c.room; if (r && !r.game) { r.cancelled = true; if (r.dr) { clearTimeout(r.dr.timer); r.dr = null; } clearTimeout(r.qTimer); const o = r.seats[1 - c.seat]; if (o && o.ws && o.ws !== ws) send(o.ws, { t: 'draftLeft', name: (r.seats[c.seat] || {}).name || 'Your opponent' }); rooms.delete(r.code); c.room = null; } return; }
     if (m.t === 'cancelq') { const r = c.room; if (r && r.open && !r.game) { clearTimeout(r.qTimer); r.open = false; rooms.delete(r.code); c.room = null; } return; }
     if (m.t === 'create' || m.t === 'bot') {
       const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });

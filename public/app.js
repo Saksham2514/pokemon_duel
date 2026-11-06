@@ -17,7 +17,7 @@ try { const d = JSON.parse(localStorage.getItem('duel_deck') || 'null'); if (d) 
 // ------------------------------------------------------------ boot
 fetch('/api/data').then(r => r.json()).then(d => { DATA = d; d.figures.forEach(f => (FIG[f.id] = f)); PL = d.plates; BOARD = d.board; deck.figs = deck.figs.filter(i => FIG[i]); deck.plates = deck.plates.filter(k => PL[k]); initUI(); if (window.Camp) Camp.init(); connect(); }).catch(e => { $('#conn').textContent = 'Failed to load data: ' + e; });
 
-function show(screen) { try { document.body.scrollTop = 0; document.documentElement.scrollTop = 0; } catch (e) { } if (screen === 'deck' && window.Camp && Camp.lobbyPanel) { try { Camp.lobbyPanel($('#lobbyOwn')); } catch (e) { } } for (const s of ['lobby', 'camp', 'deck', 'draft', 'game']) $('#' + s).classList.toggle('hidden', s !== screen); $('#btnMenu').classList.toggle('hidden', screen !== 'game'); $('#btnRestart').classList.toggle('hidden', screen !== 'game'); }
+function show(screen) { try { document.body.scrollTop = 0; document.documentElement.scrollTop = 0; } catch (e) { } if (screen === 'deck' && window.Camp && Camp.lobbyPanel) { try { Camp.lobbyPanel($('#lobbyOwn')); } catch (e) { } } for (const s of ['lobby', 'camp', 'deck', 'draft', 'game']) $('#' + s).classList.toggle('hidden', s !== screen); $('#btnMenu').classList.toggle('hidden', screen !== 'game' && screen !== 'draft'); $('#btnRestart').classList.toggle('hidden', screen !== 'game'); }
 function saveDeck() { try { localStorage.setItem('duel_deck', JSON.stringify(deck)); localStorage.setItem('duel_name', $('#name').value); } catch (e) { } }
 
 function connect() {
@@ -85,7 +85,8 @@ function onMsg(m) {
   else if (m.t === 'waiting' && window.pvpMode) { Camp.pvpMsg('Room code: ' + m.code + ' — tell your opponent to open Campaign → PvP and join this code. Waiting for them…'); }
   else if (m.t === 'waiting' && m.quick) { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Searching for an opponent…'; $('#btnCancelQ').classList.remove('hidden'); }
   else if (m.t === 'waiting') { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Room code: ' + m.code + ' — share it with your opponent. Waiting for them to join…'; }
-  else if (m.t === 'start') { evoSeen = null; $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); lastPlateN = null; crazySeen = null; crazyRings = null; crazyFresh = false; lastPos = {}; activeAnim = {}; ghosts = []; stateQ = []; animating = false; seenBadges = {}; badgeStart = {}; endShown = false; if (window.Camp) Camp.reset(); show('game'); ui = { sel: null, info: null, plate: null, z: '' }; $('#chat').innerHTML = ''; $('#endOverlay').classList.add('hidden'); }
+  else if (m.t === 'start') { evoSeen = null; introPending = true; lastCurSeen = null; $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); lastPlateN = null; crazySeen = null; crazyRings = null; crazyFresh = false; lastPos = {}; activeAnim = {}; ghosts = []; stateQ = []; animating = false; seenBadges = {}; badgeStart = {}; endShown = false; if (window.Camp) Camp.reset(); show('game'); ui = { sel: null, info: null, plate: null, z: '' }; $('#chat').innerHTML = ''; $('#endOverlay').classList.add('hidden'); }
+  else if (m.t === 'draftLeft') { clearInterval(drTimerId); sessionStorage.removeItem('duel_session'); V = null; show('deck'); toast((m.name || 'Your opponent') + ' left the draft.'); }
   else if (m.t === 'draft') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); drawDraft(m); }
   else if (m.t === 'draftWait') { drState.picks = m.picks; drawDraftTeam(); drLock('Pick locked in – waiting for your opponent…'); }
   else if (m.t === 'draftOpp') { drState.opp = m.n; $('#drOpp').textContent = 'Opponent has picked ' + m.n + ' of 6.'; }
@@ -113,7 +114,7 @@ function initUI() {
   $('#btnInfoToggle').onclick = () => { if (window.matchMedia('(max-width:900px)').matches) { $('.sidebar').classList.add('open'); $('#drawer').open = true; return; } const d = $('#drawer'); d.open = !d.open; if (d.open) d.scrollIntoView({ behavior: 'smooth' }); };
   $('#btnCloseSide').onclick = () => $('.sidebar').classList.remove('open');
   
-  $('#btnMenu').onclick = () => { if (V && !V.over && !confirm('Leave the duel? You will forfeit.')) return; if (V && !V.over) act({ t: 'resign' }); if (window.campFight || window.pvpMode) return Camp.leaveToCamp(); sessionStorage.removeItem('duel_session'); V = null; show('deck'); renderDeck(); };
+  $('#btnMenu').onclick = () => { if (!$('#draft').classList.contains('hidden')) { if (!confirm('Leave the draft?')) return; send({ t: 'leaveDraft' }); clearInterval(drTimerId); sessionStorage.removeItem('duel_session'); V = null; show('deck'); return; } if (V && !V.over && !confirm('Leave the duel? You will forfeit.')) return; if (V && !V.over) act({ t: 'resign' }); if (window.campFight || window.pvpMode) return Camp.leaveToCamp(); sessionStorage.removeItem('duel_session'); V = null; show('deck'); renderDeck(); };
   for (const id of ['fSearch', 'fRarity', 'fMp']) $('#' + id).oninput = renderGrid;
   $('#rndTeam').onclick = () => { const L = DATA.figures; EvoUI.clear(deck); const nm = {}; while (deck.figs.length < 6) { const f = L[(Math.random() * L.length) | 0]; const b = f.name.split(' ').pop(); if ((nm[b] || 0) >= 2) continue; nm[b] = (nm[b] || 0) + 1; deck.figs.push(f.id); } deck.plates = []; for (const k of Object.keys(PL).sort(() => Math.random() - 0.5)) if (cost() + PL[k].cost <= 6) deck.plates.push(k); renderDeck(); };
   $('#clrTeam').onclick = () => { EvoUI.clear(deck); deck.plates = []; renderDeck(); };
@@ -134,15 +135,15 @@ function initUI() {
 }
 function sendChat() { const i = $('#chatIn'); if (i.value.trim()) send({ t: 'chat', text: i.value }); i.value = ''; }
 function updateSummary() { $('#deckSummary').textContent = deck.figs.length ? 'Saved team: ' + deck.figs.map(i => FIG[i].name).join(', ') : 'No team saved yet.'; }
-const cost = () => deck.plates.reduce((a, k) => a + PL[k].cost, 0);
+const cost = () => deck.plates.reduce((a, k) => a + ((PL[k] || {}).cost || 0), 0);
 function renderDeck() {
   renderGrid();
   const slots = $('#slots'); slots.innerHTML = '';
-  EvoUI.norm(deck);
+  EvoUI.setOwns(null); EvoUI.norm(deck);
   for (let i = 0; i < 6; i++) { const id = deck.figs[i]; const s = el('div', { class: 'slot', onclick: () => { if (id) { EvoUI.removeSlot(deck, i); renderDeck(); } } }); if (id) { s.append(img(FIG[id]), FIG[id].name); s.onmouseenter = () => infoCard($('#infoCard'), FIG[id]); } else s.append('Empty'); slots.append(el('div', { class: 'slotwrap' }, s, EvoUI.extras(deck, i, () => true, renderDeck))); }
   $('#teamCount').textContent = `(${deck.figs.length}/6)`;
   const pl = $('#plateList'); pl.innerHTML = '';
-  for (const k of Object.keys(PL)) { const Pp = PL[k]; const on = deck.plates.includes(k); pl.append(el('div', { class: 'plate' + (on ? ' on' : ''), onclick: () => { if (on) deck.plates = deck.plates.filter(x => x !== k); else if (cost() + Pp.cost <= 6) deck.plates.push(k); renderDeck(); } }, el('span', { class: 'dot', style: 'background:' + (COL[Pp.color] || '#f78fb3') }), el('div', {}, `${Pp.name} (${Pp.cost})`, el('small', {}, Pp.text)))); }
+  for (const k of Object.keys(PL).filter(k => !PL[k].need)) { const Pp = PL[k]; const on = deck.plates.includes(k); pl.append(el('div', { class: 'plate' + (on ? ' on' : ''), onclick: () => { if (on) deck.plates = deck.plates.filter(x => x !== k); else if (cost() + Pp.cost <= 6) deck.plates.push(k); renderDeck(); } }, el('span', { class: 'dot', style: 'background:' + (COL[Pp.color] || '#f78fb3') }), el('div', {}, `${Pp.name} (${Pp.cost})`, el('small', {}, Pp.text)))); }
   $('#plateCost').textContent = `(${cost()}/6)`;
   const ok = deck.figs.length === 6; $('#btnQuick').disabled = $('#btnBot').disabled = $('#btnCreate').disabled = $('#btnJoin').disabled = !ok;
   $('#deckErr').textContent = ok ? '' : 'Pick 6 Pokémon to play.'; saveDeck(); updateSummary();
@@ -233,7 +234,7 @@ function zone(i, isMe) {
   z.append(row); return z;
 }
 
-let lastPlateN = null, lastCurSeen = null;
+let lastPlateN = null, lastCurSeen = null, introPending = false, introOn = false;
 const PICON = { plus_power: '💪', plus_power_2: '💥', threat: '🎯', switch: '🔁', hurdle_jump: '🦘', speed_boost: '⚡', retreat: '↩️', goal_block: '🛡️', focus_band: '🎀', big_guard: '🧱', double_chance: '🎲', respin_all: '🥚', revive: '💖', full_heal: '💊', wake_up: '⏰', z_charge: '💎' };
 function plateAnim(ev) {
   const Pp = PL && PL[ev.key]; if (!Pp) return; const mineUse = ev.seat === V.seat; const who = mineUse ? 'You' : (V.players[ev.seat].name || 'Opponent');
@@ -248,7 +249,8 @@ function plateAnim(ev) {
 }
 function render() {
   if (!V || !BOARD) return;
-  if (!V.over && V.cur === V.seat && lastCurSeen !== V.turn + ':' + V.cur) { lastCurSeen = V.turn + ':' + V.cur; if (V.turn > 1 || V.cur === V.seat) SFX.play('turn'); }
+  if (!V.over && lastCurSeen !== V.turn + ':' + V.cur) { const first = lastCurSeen === null; lastCurSeen = V.turn + ':' + V.cur; if (V.cur === V.seat && (V.turn > 1 || V.cur === V.seat)) SFX.play('turn'); if (!first && !introOn) turnFlash(V.cur === V.seat); }
+  if (introPending) { introPending = false; if (V.turn <= 1) vsIntro(); }
   if (V.plateEv) { if (lastPlateN !== null && V.plateEv.n !== lastPlateN) plateAnim(V.plateEv); lastPlateN = V.plateEv.n; } else if (lastPlateN === null) lastPlateN = 0;
   const me = V.seat, opp = 1 - me, mine = V.cur === me && !V.over;
   $('#oppZone').replaceWith(zone(opp, false)); $('#myZone').replaceWith(zone(me, true));
@@ -267,7 +269,7 @@ function render() {
 }
 function drawHud(me, opp) {
   let h = $('#hud'); if (!h) { h = el('div', { id: 'hud' }); $('.boardwrap').prepend(h); }
-  const side = (i, cls) => { const p = V.players[i]; return el('div', { class: 'hs ' + cls + (V.cur === i && !V.over ? ' on' : '') }, el('div', { class: 'hn' }, p.name + (i === me ? ' (you)' : '')), el('div', { class: 'hc' }, p.clock == null ? '–' : fmt(p.clock))); };
+  const side = (i, cls) => { const p = V.players[i]; const won = V.players[1 - i].kos || 0; return el('div', { class: 'hs ' + cls + (V.cur === i && !V.over ? ' on' : '') }, el('div', { class: 'hav' }, (p.name || '?').trim().charAt(0).toUpperCase()), el('div', { class: 'hmid' }, el('div', { class: 'hn' }, p.name + (i === me ? ' (you)' : '')), el('div', { class: 'hko', title: 'Enemy Pokémon you have knocked out' }, '⚔ ', el('b', {}, String(won)), ' KO')), el('div', { class: 'hc' }, p.clock == null ? '–' : fmt(p.clock))); };
   h.replaceChildren(side(me, 'me'), el('div', { class: 'hturn' }, el('small', {}, 'TURN'), el('b', {}, String(V.turn))), side(opp, 'opp'));
 }
 function drawFightPrompt(mine) {
@@ -601,7 +603,7 @@ function drawDraft(m) {
   $('#drTitle').textContent = '🃏 Draft – pick ' + (m.round + 1) + ' of ' + m.total; $('#drSub').textContent = 'Both players are offered 2 ' + ({ C: 'Common', UC: 'Uncommon', R: 'Rare', EX: 'EX', UX: 'Ultra' }[m.rarity] || '') + ' Pokémon this round. Pick one – your opponent picks at the same time, and teams are revealed at the end.';
   const box = $('#drOpts'); box.innerHTML = ''; $('#drStatus').classList.add('hidden'); $('#drOpp').textContent = 'Opponent has picked ' + drState.opp + ' of 6.';
   m.options.forEach((id, idx) => { const f = FIG[id];
-    box.append(el('div', { class: 'dcard', style: '--rc:' + DRC[f.rarity] }, el('div', { class: 'dtop' }, img(f), el('div', {}, el('b', {}, f.name), el('div', { class: 'small' }, f.rarity + ' · MP ' + f.mp), el('div', { class: 'tags' }, f.types.map(t => el('span', {}, t))))),
+    box.append(el('div', { class: 'dcard', style: '--rc:' + DRC[f.rarity] }, el('div', { class: 'dtop' }, img(f), el('div', {}, el('b', {}, f.name), el('div', { class: 'small' }, f.rarity + ' · MP ' + f.mp), el('div', { class: 'small dtypes' }, f.types.join(' / ')))),
       wheelSvg(f.segs), (f.ability && !/^none/i.test(f.ability)) ? el('div', { class: 'small dab' }, el('b', {}, 'Ability: '), f.ability) : el('div', { class: 'small muted' }, 'No ability'),
       el('button', { class: 'primary', onclick: ev => { send({ t: 'draftPick', idx }); drLock('Pick locked in – waiting for your opponent…'); const cards = [...$('#drOpts').children]; cards.forEach((c, k) => c.classList.add(k === idx ? 'picked' : 'dim')); } }, 'Pick ' + f.name))); });
   if (m.picked) drLock('Pick locked in – waiting for your opponent…');
@@ -640,3 +642,18 @@ document.addEventListener('visibilitychange', () => { if (session && session.bot
 
 (function () { const b = document.getElementById('btnSnd'); if (!b) return; const upd = () => (b.textContent = SFX.on ? '🔊' : '🔇'); upd(); b.onclick = () => { SFX.toggle(); upd(); SFX.play('select'); };
   document.addEventListener('keydown', e => { if (/input|textarea/i.test((e.target || {}).tagName || '')) return; if (e.key === 'm' || e.key === 'M') { SFX.toggle(); upd(); } if (e.key === 'Escape' && typeof V !== 'undefined' && V) { ui.sel = null; ui.plate = null; clearPreview(); render(); } }); })();
+
+// ---- match presentation: VS intro splash and turn flash
+function turnFlash(mine) {
+  document.querySelectorAll('.turnflash').forEach(e => e.remove());
+  const o = el('div', { class: 'turnflash ' + (mine ? 'mine' : 'theirs') }, el('span', {}, mine ? 'YOUR TURN' : ((V.players[V.cur].name || 'Opponent') + "'s turn").toUpperCase()));
+  document.body.append(o); setTimeout(() => o.classList.add('out'), 850); setTimeout(() => o.remove(), 1150);
+}
+function vsIntro() {
+  introOn = true; const me = V.players[V.seat], op = V.players[1 - V.seat];
+  const mine = V.figs.filter(f => f.owner === V.seat && f.fid && FIG[f.fid]).slice(0, 6);
+  const side = (name, cls, figs) => el('div', { class: 'vside ' + cls }, el('div', { class: 'vav' }, (name || '?').trim().charAt(0).toUpperCase()), el('div', { class: 'vname' }, name), el('div', { class: 'vteam' }, ...(figs ? figs.map(f => img(FIG[f.fid])) : Array.from({ length: 6 }, () => el('span', { class: 'pball' })))));
+  const o = el('div', { class: 'vsintro', onclick: () => end() }, side(me.name, 'l', mine), el('div', { class: 'vsmid' }, el('div', { class: 'vsword' }, 'VS'), el('div', { class: 'vsgo' }, 'FIGHT!')), side(op.name, 'r', null));
+  let done = false; const end = () => { if (done) return; done = true; o.classList.add('out'); setTimeout(() => { o.remove(); introOn = false; }, 350); };
+  document.body.append(o); try { SFX.play('crazy'); } catch (e) { } setTimeout(end, 2300);
+}
