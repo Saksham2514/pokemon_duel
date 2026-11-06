@@ -179,6 +179,65 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.72 — Evolution browser verification and Mega fix
+
+- Verified in a real browser: the Evolve button, evolve overlay and form change, the Mega Ring flow (overlay, 💎 badge), phone layout, and saving/loading decks with evolutions through the real save endpoint (old decks without evolution fields still load).
+- New `test/pvp_evo.js`: Collection PvP with evolution decks (ownership of each stage, Mega form, Mega Ring plate; game starts with the evolution queue).
+- Fixed: an unevolved Pokémon could use the Mega Ring and jump to a Mega form of a later stage (Charmander → Mega Charizard X). The Pokémon must now be the matching form first. New tests cover this.
+
+## v10.71 — Evolution checks and fixes
+
+- Bots now use the free Evolve action (before, only humans could evolve).
+- Campaign deck builder explains that evolution buttons appear once you own the later stages.
+- New `test/evo_sim.js`: 60 full bot games with evolution decks (all finish, 44 evolutions, no errors); part of `npm run test:evolution`.
+
+## v10.70 — 8 new regions (16 total, 96 stages)
+
+- New regions: Mirage Desert, Frostpeak Tundra, Storm Isles, Crystal Caverns, Neon Metropolis, Twilight Ruins, Iron Citadel, Celestial Spire (public/campaign_regions2.js, spliced between the originals by difficulty). The Pinnacle is still last.
+- Difficulty and rewards now scale across all 96 stages. Reward growth was softened so late rewards don't balloon.
+- Existing progress is kept; new regions in the middle must be cleared in order to reach later ones.
+
+## v10.69 — Evolutions, Mega Evolution, form changes
+
+- **Evolutions in decks**: under each deck slot, `＋ Evolution` lets you queue the later stages (e.g. Charmander → Charmeleon → Charizard). They don't use deck slots, but in the campaign you must own each stage. After a Pokémon survives its first battle, a free **Evolve** button appears in the main phase.
+- **Mega Evolution**: `＋ Mega` on a slot + the new **Mega Ring** plate (cost 2). The Pokémon stays Mega for 10–15 turns, then reverts (also reverts if it leaves the field).
+- **Form-change-on-KO now works** (Magikarp, Nincada, Feebas, Larvesta evolve instead of KO; Keldeo, Black/White Kyurem, Zygarde 10% change form) even if the form isn't in your deck.
+- Balance: "+1 MP when evolved" abilities (e.g. Lycanroc) now require a real evolution.
+- Not yet: Pancham/Skrelp/Eevee-style special triggers, Aegislash/Giratina stance swaps.
+- Tests: `npm run test:evolution`.
+
+## v10.68 — Game skin, desktop layout, in-place attack cancel
+
+- New `public/skin.css` (self-hosted Rajdhani + Russo One fonts in `public/fonts/`): gold/steel bevelled buttons, glass panels, animated hex backdrop, redesigned title screen with three mode cards, banner-style campaign chapters and a two-column stage grid, gold-trimmed header.
+- Desktop game screen: the command dock and the Info / Log / Chat panel now share one right-hand column next to the board (no more empty gap); the board column is centred.
+- Attacking in place (clicking a Pokémon that is already next to an enemy) and then choosing not to fight now just cancels — it no longer ends your turn. The button reads CANCEL in that case; after a real move HOLD BACK still ends the turn.
+- Regions: removed the loaner team. If you don't own enough Pokémon of the allowed types, play more to unlock them.
+
+## v10.67 — Regions, reward wheel, Next button, tougher bots
+
+- **🗺 Regions** (Campaign tab): 16 regions × 6 trainers, unlocked in order. Each region has a **type restriction** (e.g. Magma Reach: Fire/Rock/Ground/Fighting only; the last, The Pinnacle, has none) — the opposing trainers obey it too, the server checks your deck, and you can auto-build a team from your collection or borrow a loaner team. Data lives in `public/campaign_regions.js`.
+- **🎡 Reward wheel**: every region win spins a half-blue / half-red wheel — 🔵 a Pokémon, 🔴 a big coin payout. Region champions give a badge, gems, a free chest and a plate. Three new quests.
+- **▶ Next** button on the victory screen for Story, Regions and Tower: jump straight to the next stage's pre-fight screen.
+- Bots with skill ≥ 0.8 now think much longer (up to ~1.2 s per move) with more rollouts; Region trainers start at skill 0.45 and climb to 0.99.
+- `npm run test:regions` checks the region data.
+
+## v10.66 — Rematch + Fly fixes
+
+- Rematch in Crazy / Draft / Random queue rooms no longer swaps your team for the one in the team builder (or a random one): Crazy keeps your deck, and Draft re-runs the draft.
+- Mega Salamence's Scarlet Bladewings: Fly now knocks out the jumped-over Pokémon only when the jump is actually made (not the moment Fly is spun, and not if you skip the move).
+
+## v10.65 — Full ability & move audit
+
+- New `npm run test:audit` (`test/audit.js`): checks all 593 Pokémon — every wheel segment and Z-Move note against the effects the engine actually has, every ability for a matching rule, runs every move 6× in random board positions and every Pokémon through forced battles, checking board consistency (no ghost occupants, bad Wait, wrong locations).
+- `node test/audit.js --report` writes `AUDIT_REPORT.md` (every known gap listed); `--baseline` accepts the current gaps into `test/known_gaps.json`. The test fails on any NEW gap, so a broken or unparsed move/ability can't slip in again.
+- Fixed by the audit: Dragon Tail (opponent now waits), Skull Bash (KOs an opponent with a condition), Sheer Cold (excludes a frozen opponent), Magma Slide (now burns), Garchomp Double Flight (KO if opponent has a condition).
+
+## v10.64 — Sand Veil + Taunt
+Sandshrew's Sand Veil (slip past the attacker) now offers any free spot on the far side of the attacker; before it only worked when the spot directly behind was free, which was rare. Taunt: the shorter 'until the end of your turn' version now lasts through the opponent's next turn (it used to expire before they could spin), and taunted Pokémon show a 😤 badge so you can see it is active.
+
+## v10.63 — Mimikyu
+Shiny Mimikyu had an empty wheel in the source data (only a Miss); it now inherits Mimikyu's wheel and Z-Moves. Mimikyu's Disguise now works: a marker is attached when it moves from the bench to the field (🎭 badge), absorbs one battle knockout, then breaks and clears its conditions.
+
 ## v10.62 — Crazy Mode animations
 When a Crazy event happens: a full-screen swirl announcement (big icon, event name, plain-language explanation, tap to dismiss, auto-fades), a crazy sound, a board shake, and pulsing pink rings around the Pokémon affected. The pink banner keeps the last event on screen.
 

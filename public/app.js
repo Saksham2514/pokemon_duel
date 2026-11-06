@@ -85,7 +85,7 @@ function onMsg(m) {
   else if (m.t === 'waiting' && window.pvpMode) { Camp.pvpMsg('Room code: ' + m.code + ' — tell your opponent to open Campaign → PvP and join this code. Waiting for them…'); }
   else if (m.t === 'waiting' && m.quick) { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Searching for an opponent…'; $('#btnCancelQ').classList.remove('hidden'); }
   else if (m.t === 'waiting') { const w = $('#waitMsg'); w.classList.remove('hidden'); w.textContent = 'Room code: ' + m.code + ' — share it with your opponent. Waiting for them to join…'; }
-  else if (m.t === 'start') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); lastPlateN = null; crazySeen = null; crazyRings = null; crazyFresh = false; lastPos = {}; activeAnim = {}; ghosts = []; stateQ = []; animating = false; seenBadges = {}; badgeStart = {}; endShown = false; if (window.Camp) Camp.reset(); show('game'); ui = { sel: null, info: null, plate: null, z: '' }; $('#chat').innerHTML = ''; $('#endOverlay').classList.add('hidden'); }
+  else if (m.t === 'start') { evoSeen = null; $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); lastPlateN = null; crazySeen = null; crazyRings = null; crazyFresh = false; lastPos = {}; activeAnim = {}; ghosts = []; stateQ = []; animating = false; seenBadges = {}; badgeStart = {}; endShown = false; if (window.Camp) Camp.reset(); show('game'); ui = { sel: null, info: null, plate: null, z: '' }; $('#chat').innerHTML = ''; $('#endOverlay').classList.add('hidden'); }
   else if (m.t === 'draft') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); drawDraft(m); }
   else if (m.t === 'draftWait') { drState.picks = m.picks; drawDraftTeam(); drLock('Pick locked in – waiting for your opponent…'); }
   else if (m.t === 'draftOpp') { drState.opp = m.n; $('#drOpp').textContent = 'Opponent has picked ' + m.n + ' of 6.'; }
@@ -109,13 +109,14 @@ function initUI() {
   $('#btnRestart').onclick = () => { { if (window.pvpMode) return Camp.pvpRematch(); const cf = !!window.campFight; if (confirm((session && session.bot ? 'Restart now' : 'Ask your opponent for a rematch') + (cf ? ' of this fight?' : ' with new random teams?'))) send({ t: 'rematch', random: !cf }); } };
   try { const ts = $('#themeSel'); [['random', 'Random each game'], ...THEME_LIST].forEach(([v, n]) => ts.append(el('option', { value: v }, n))); ts.value = localStorage.getItem('duel_theme') || 'marble'; ts.onchange = () => { try { localStorage.setItem('duel_theme', ts.value); } catch (e) { } }; } catch (e) { }
   $('#btnForfeit').onclick = () => $('#btnMenu').click();
+  { const mq = window.matchMedia('(min-width:901px)'); const place = () => { const d = $('#dock'), rc = $('#rightCol'), bw = $('.boardwrap'); if (!d || !rc || !bw) return; if (mq.matches) rc.prepend(d); else bw.append(d); if (mq.matches) $('#drawer').open = true; }; (mq.addEventListener ? mq.addEventListener('change', place) : mq.addListener(place)); place(); } // desktop: dock + info/log share the right column
   $('#btnInfoToggle').onclick = () => { if (window.matchMedia('(max-width:900px)').matches) { $('.sidebar').classList.add('open'); $('#drawer').open = true; return; } const d = $('#drawer'); d.open = !d.open; if (d.open) d.scrollIntoView({ behavior: 'smooth' }); };
   $('#btnCloseSide').onclick = () => $('.sidebar').classList.remove('open');
   
   $('#btnMenu').onclick = () => { if (V && !V.over && !confirm('Leave the duel? You will forfeit.')) return; if (V && !V.over) act({ t: 'resign' }); if (window.campFight || window.pvpMode) return Camp.leaveToCamp(); sessionStorage.removeItem('duel_session'); V = null; show('deck'); renderDeck(); };
   for (const id of ['fSearch', 'fRarity', 'fMp']) $('#' + id).oninput = renderGrid;
-  $('#rndTeam').onclick = () => { const L = DATA.figures; deck.figs = []; const nm = {}; while (deck.figs.length < 6) { const f = L[(Math.random() * L.length) | 0]; const b = f.name.split(' ').pop(); if ((nm[b] || 0) >= 2) continue; nm[b] = (nm[b] || 0) + 1; deck.figs.push(f.id); } deck.plates = []; for (const k of Object.keys(PL).sort(() => Math.random() - 0.5)) if (cost() + PL[k].cost <= 6) deck.plates.push(k); renderDeck(); };
-  $('#clrTeam').onclick = () => { deck.figs = []; deck.plates = []; renderDeck(); };
+  $('#rndTeam').onclick = () => { const L = DATA.figures; EvoUI.clear(deck); const nm = {}; while (deck.figs.length < 6) { const f = L[(Math.random() * L.length) | 0]; const b = f.name.split(' ').pop(); if ((nm[b] || 0) >= 2) continue; nm[b] = (nm[b] || 0) + 1; deck.figs.push(f.id); } deck.plates = []; for (const k of Object.keys(PL).sort(() => Math.random() - 0.5)) if (cost() + PL[k].cost <= 6) deck.plates.push(k); renderDeck(); };
+  $('#clrTeam').onclick = () => { EvoUI.clear(deck); deck.plates = []; renderDeck(); };
   $('#btnBot').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'bot', name: $('#name').value, deck }); };
   $('#goQuick').onclick = () => { show('deck'); if (deck.figs.length === 6) $('#btnQuick').click(); else toast('Build a team of 6 first, then press Quick match.'); };
   $('#btnDraft').onclick = () => { window.pvpMode = false; send({ t: 'quick', draft: true, name: $('#name').value }); };
@@ -137,7 +138,8 @@ const cost = () => deck.plates.reduce((a, k) => a + PL[k].cost, 0);
 function renderDeck() {
   renderGrid();
   const slots = $('#slots'); slots.innerHTML = '';
-  for (let i = 0; i < 6; i++) { const id = deck.figs[i]; const s = el('div', { class: 'slot', onclick: () => { if (id) { deck.figs.splice(i, 1); renderDeck(); } } }); if (id) { s.append(img(FIG[id]), FIG[id].name); s.onmouseenter = () => infoCard($('#infoCard'), FIG[id]); } else s.append('Empty'); slots.append(s); }
+  EvoUI.norm(deck);
+  for (let i = 0; i < 6; i++) { const id = deck.figs[i]; const s = el('div', { class: 'slot', onclick: () => { if (id) { EvoUI.removeSlot(deck, i); renderDeck(); } } }); if (id) { s.append(img(FIG[id]), FIG[id].name); s.onmouseenter = () => infoCard($('#infoCard'), FIG[id]); } else s.append('Empty'); slots.append(el('div', { class: 'slotwrap' }, s, EvoUI.extras(deck, i, () => true, renderDeck))); }
   $('#teamCount').textContent = `(${deck.figs.length}/6)`;
   const pl = $('#plateList'); pl.innerHTML = '';
   for (const k of Object.keys(PL)) { const Pp = PL[k]; const on = deck.plates.includes(k); pl.append(el('div', { class: 'plate' + (on ? ' on' : ''), onclick: () => { if (on) deck.plates = deck.plates.filter(x => x !== k); else if (cost() + Pp.cost <= 6) deck.plates.push(k); renderDeck(); } }, el('span', { class: 'dot', style: 'background:' + (COL[Pp.color] || '#f78fb3') }), el('div', {}, `${Pp.name} (${Pp.cost})`, el('small', {}, Pp.text)))); }
@@ -199,6 +201,10 @@ function badgeList(f) {
   if (f.focus) L.push({ k: 'focus', icon: '🎗', col: '#2d8f6f', tip: 'Focus Band' });
   if (f.fs) L.push({ k: 'fs' + f.fs, icon: '♪' + f.fs, col: '#7a2bd9', tip: 'Final Song marker – this Pokémon is knocked out in ' + f.fs + ' turn' + (f.fs > 1 ? 's' : ''), txt: true });
   if (f.af && FIG[f.af]) L.push({ k: 'af', icon: '🌀', col: '#d63384', tip: 'Crazy Mode – this Pokémon now has the ability “' + (FIG[f.af].abilityName || '?') + '” from ' + FIG[f.af].name });
+  if (f.evoR && f.evo) L.push({ k: 'evoR', icon: '✨', col: '#e0a800', tip: 'Ready to evolve – use the Evolve button at the start of your turn.' });
+  if (f.mg) L.push({ k: 'mg', icon: '💎' + f.mg, col: '#c0397f', tip: 'Mega Evolved – changes back in ' + f.mg + ' turn' + (f.mg > 1 ? 's' : '') + ' (or when it leaves the field).', txt: true });
+  if (f.dis) L.push({ k: 'dis', icon: '🎭', col: '#8e6bbf', tip: 'Disguise marker – the next battle knockout is ignored (the marker is removed instead).' });
+  if (f.tn) L.push({ k: 'tn', icon: '😤', col: '#c0392b', tip: 'Taunted – Purple and Blue spins are shifted to the next result until the taunt ends.' });
   if (f.sym) L.push({ k: 'sym', icon: '🧬', col: '#1f9d8b', tip: 'Symbiont marker – only the opposing player can move this Pokémon (MP move). Removed by tagging.' });
   return L;
 }
@@ -255,7 +261,7 @@ function render() {
   { const cb = $('#crazyBar'); if (cb) { if (V.crazy && !V.over) { const left = Math.max(0, V.crazy.next - V.turn); cb.classList.remove('hidden'); cb.textContent = '🌀 Crazy Mode · ' + (V.crazy.last ? V.crazy.last.text + ' · ' : '') + (left > 0 ? 'next change in ~' + left + ' turn' + (left > 1 ? 's' : '') : 'a change is coming!'); } else cb.classList.add('hidden'); } }
   $('#topinfo').textContent = session ? 'Room ' + session.code : '';
   drawHud(me, opp);
-  drawBoard(); crazyAnnounce(); drawCrazyRings(); drawFightPrompt(mine); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null);
+  drawBoard(); crazyAnnounce(); evoAnnounce(); drawCrazyRings(); drawFightPrompt(mine); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null);
   const L = $('#log'); L.innerHTML = ''; V.log.forEach(e => L.append(el('div', {}, e.msg))); L.scrollTop = L.scrollHeight;
   if (V.over) showEnd();
 }
@@ -270,7 +276,7 @@ function drawFightPrompt(mine) {
   const att = V.figs.find(f => f.uid === (V.pendingAttacker != null ? V.pendingAttacker : -1));
   p = el('div', { id: 'fightPrompt' }, el('div', { class: 'fp-title' }, '⚔️ Battle time!'), el('div', { class: 'fp-sub' }, 'Your Pokémon is next to an enemy. Attack it, or hold back? (A battle ends your turn.)'),
     el('div', { class: 'fp-btns' }, ...V.legal.battle.map(u => { const f = V.figs.find(x => x.uid === u); const d = f && f.fid && FIG[f.fid]; return el('button', { class: 'fp-fight', onclick: () => act({ t: 'battle', target: u }) }, d ? img(d) : '', el('span', {}, el('b', {}, 'FIGHT'), el('small', {}, d ? d.name : 'enemy'))); }),
-      V.legal.mustBattle ? '' : el('button', { class: 'fp-skip', onclick: () => act({ t: 'battle', target: 'skip' }) }, el('span', {}, el('b', {}, 'HOLD BACK'), el('small', {}, 'end turn, no fight')))));
+      V.legal.mustBattle ? '' : el('button', { class: 'fp-skip', onclick: () => act({ t: 'battle', target: 'skip' }) }, el('span', {}, el('b', {}, V.legal.inPlace ? 'CANCEL' : 'HOLD BACK'), el('small', {}, V.legal.inPlace ? 'pick another move' : 'end turn, no fight')))));
   $('.boardwrap').append(p);
 }
 function dests() { if (!V.legal || ui.sel == null) return []; return V.legal.moves[ui.sel] || []; }
@@ -316,6 +322,16 @@ function drawSlab(svg, defs) {
     svg.append(sv('rect', { x: q.x - 92, y: y0, width: 184, height: 112, rx: 26, fill: `url(#${mine ? 'slPadO' : 'slPadB'})`, stroke: mine ? '#ffb347' : '#53a8ff', 'stroke-opacity': 0.6, 'stroke-width': 3 }), sv('rect', { x: q.x - 92, y: y0, width: 184, height: 112, rx: 26, fill: 'url(#slHaz)' })); });
 }
 const CRAZY_FX = { swap: ['🔀', 'POSITION SWAP'], shuffle: ['🌪️', 'BOARD SHUFFLE'], storm: ['⚡', 'STATUS STORM'], sleep: ['😴', 'LIGHTS OUT'], replace: ['🎭', 'REPLACED!'], ability: ['✨', 'ABILITY SWAP'], trade: ['🤝', 'SWITCH SIDES'], recall: ['🎒', 'RECALL'], rally: ['🚩', 'RALLY'] };
+let evoSeen = null;
+function evoAnnounce() {
+  if (!V || !V.evoFx) { if (evoSeen === null) evoSeen = 0; return; }
+  const x = V.evoFx; if (evoSeen === null) { evoSeen = x.n; return; } if (x.n === evoSeen) return; evoSeen = x.n;
+  const f = V.figs.find(q => q.uid === x.uid); const ico = x.why === 'mega' ? '💎' : x.why === 'form' ? '🔁' : x.why === 'unmega' || x.why === 'unform' ? '↩' : '✨';
+  const title = x.why === 'mega' ? 'MEGA EVOLUTION!' : x.why === 'form' ? 'FORM CHANGE!' : x.why === 'unmega' || x.why === 'unform' ? 'BACK TO NORMAL' : 'EVOLUTION!';
+  const to = DATA.figures.find(q => q.name === x.to), fr = DATA.figures.find(q => q.name === x.from);
+  const o = el('div', { class: 'evofx ' + (x.why || '') }, el('div', { class: 'evoflash' }), el('div', { class: 'evocard' }, el('div', { class: 'evotitle' }, ico + ' ' + title), el('div', { class: 'evorow' }, fr ? img(fr) : '', el('span', { class: 'evoarrow' }, '➜'), to ? img(to) : ''), el('div', { class: 'evonames' }, x.from + '  ➜  ' + x.to)));
+  document.body.append(o); try { SFX.play(x.why === 'mega' ? 'crazy' : 'win'); } catch (e) { } setTimeout(() => o.classList.add('out'), 1900); setTimeout(() => o.remove(), 2400);
+}
 let crazySeen = null, crazyRings = null, crazyFresh = false;
 function crazyAnnounce() {
   if (!V || !V.crazy) { crazySeen = null; return; }
@@ -445,6 +461,7 @@ function drawActions() {
   if (V.phase === 'battleChoice') { if (!mineTurnNow()) a.append('Waiting…'); else a.append(el('div', { class: 'muted small' }, 'Choose FIGHT or HOLD BACK above.')); return; }
   const me = V.players[V.seat];
   if (V.legal.loyalty && V.legal.loyalty.length && !V.moved) a.append(el('div', { class: 'row' }, ...V.legal.loyalty.map(u => { const f = V.figs.find(x => x.uid === u); return el('button', { class: 'platecard', style: '--pc:#f78fb3', title: 'Loyalty: move it to your bench, then you can use it again right away (clears its Wait).', onclick: () => act({ t: 'loyalty', uid: u }) }, el('span', { class: 'pc-ic' }, '🐾'), el('span', { class: 'pc-nm' }, 'Loyalty: ' + FIG[f.fid].name + ' → bench')); })));
+  if (V.legal.evolve && V.legal.evolve.length && !V.moved) a.append(el('div', { class: 'row' }, ...V.legal.evolve.map(e => { const f = V.figs.find(x => x.uid === e.uid); return el('button', { class: 'platecard evobtn', style: '--pc:#ffcb05', title: 'Evolving is free – you can still move afterwards.', onclick: () => act({ t: 'evolve', uid: e.uid }) }, el('span', { class: 'pn' }, '✨ Evolve'), el('span', {}, FIG[f.fid].name + ' → ' + FIG[e.to].name)); })));
   if (V.legal.preswap && V.legal.preswap.length && !V.moved) a.append(el('div', { class: 'row' }, ...V.legal.preswap.flatMap(ps => ps.with.map(w => { const f = V.figs.find(x => x.uid === ps.uid), o = V.figs.find(x => x.uid === w); return el('button', { class: 'platecard', style: '--pc:#74b9ff', title: ps.kind === 'volt' ? 'Volt Swap: switch with a paralyzed Electric Pokémon; opposing Pokémon on your entry points become paralyzed.' : 'Swap places with this ally before moving.', onclick: () => act({ t: 'preswap', uid: ps.uid, with: w }) }, el('span', { class: 'pc-ic' }, '↔'), el('span', { class: 'pc-nm' }, FIG[f.fid].name + ' ⇄ ' + FIG[o.fid].name)); }))));
   if (V.turn <= 3) a.append(el('div', { class: 'howto' }, el('b', {}, 'How to play: '), '① (optional) use a plate  ② tap one of your Pokémon  ③ tap a glowing point to move. ', el('span', { class: 'swordnote' }, '⚔️ on a point = you can start a battle from there.')));
   if (ui.plate) a.append(el('div', { class: 'notice' }, 'Plate: choose a ' + (ui.plate.step === 'a' ? 'target' : 'bench Pokémon') + ' (highlighted). ', el('button', { onclick: () => { ui.plate = null; render(); } }, 'Cancel')));

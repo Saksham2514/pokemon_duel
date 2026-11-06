@@ -20,9 +20,15 @@
     const idx = BOSSES.length, p = Math.min(1, idx / (BASE - 1)), last = fi === ch.fights.length - 1; const reward = Math.round((100 + (idx < BASE ? idx : BASE + (idx - BASE) * 0.5) * 50) * (last ? 2 : 1) / 10) * 10;
     BOSSES.push({ id: ch.id + '_' + fi, idx, ch: ci, fi, name: f[0], title: f[1], types: f[2], ace: f[3], say: f[4], rar: last && p > 0.1 ? rarFor(Math.min(1, p + 0.1)) : rarFor(p), skill: idx === BASE - 1 ? 0.99 : idx >= BASE ? Math.min(0.99, 0.97 + 0.02 * (idx - BASE) / Math.max(1, N - BASE - 1)) : Math.min(0.97, 0.04 + 0.93 * Math.pow(p, 0.85)), reward, fee: Math.max(30, Math.round(reward * 0.12 / 10) * 10), unlock: last ? ch.unlock : null, last, rival: f[1] === 'Rival', chest: last ? (ci < 2 ? 'bronze' : ci < 4 ? 'silver' : ci < 6 ? 'gold' : 'mythic') : null });
   }));
+  // ---- regions (public/campaign_regions.js): themed mini-campaigns with a type restriction
+  const RG = window.CAMP_REGIONS || []; const RGSTAGES = [];
+  RG.forEach((rg, ri) => rg.fights.forEach((f, fi) => {
+    const last = fi === rg.fights.length - 1, k = ri * 6 + fi, p = Math.min(1, k / Math.max(1, RG.length * 6 - 1)); const reward = Math.round((250 + k * 45) * (last ? 1.8 : 1) / 10) * 10;
+    RGSTAGES.push({ id: 'rg_' + rg.id + '_' + fi, kind: 'region', ri, fi, rg, allow: rg.allow, name: f[0], title: f[1], types: f[2], ace: f[3], say: f[4], rar: rarFor(Math.min(1, 0.05 + p * 0.95)), skill: Math.min(0.99, 0.45 + 0.54 * Math.pow(p, 0.8)), reward, fee: Math.max(40, Math.round(reward * 0.12 / 10) * 10), last, region: rg.name });
+  }));
   const FREE_NAMES = { bronze: 'Bronze Chest', silver: 'Silver Chest', gold: 'Gold Chest', mythic: 'Mythic Chest' };
 
-  let S = null, cur = null, openCh = null, tab = 'battle', fil = { q: '', r: '' }, editDeck = 0, stock = null, done = false, shake = null, mem = null;
+  let S = null, cur = null, openCh = null, openRg = null, tab = 'battle', fil = { q: '', r: '' }, editDeck = 0, stock = null, done = false, shake = null, mem = null;
   const $c = id => document.getElementById(id);
   const rngSeed = a => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const baseName = f => f.name.replace(/^(Mega|Alolan|Galarian|Hisuian|Primal|Origin|Therian|Incarnate)\s+/i, '').split(/[ (]/)[0];
@@ -37,7 +43,7 @@
   function load() {
     return (mem && auth && memOwner === auth.name) ? mig(mem) : null;
   }
-  function mig(s) { if (!s.plates) { s.plates = {}; STARTER_PLATES.forEach(k => (s.plates[k] = 1)); (s.decks || []).forEach(d => (d.plates || []).forEach(k => (s.plates[k] = 1))); } s.free = s.free || {}; s.stats = s.stats || { chests: 0, earned: 0, rivals: 0 }; s.quests = s.quests || {}; s.tower = s.tower || { best: 0, cur: 0 }; s.daily = s.daily || {}; s.hardWon = s.hardWon || {}; s.beaten = s.beaten || {}; if (s.gems == null) s.gems = 10; s.pickOffer = s.pickOffer || null; s.restocks = s.restocks || 0; s.stockAt = s.stockAt || 0; return s; }
+  function mig(s) { if (!s.plates) { s.plates = {}; STARTER_PLATES.forEach(k => (s.plates[k] = 1)); (s.decks || []).forEach(d => (d.plates || []).forEach(k => (s.plates[k] = 1))); } s.free = s.free || {}; s.stats = s.stats || { chests: 0, earned: 0, rivals: 0 }; s.quests = s.quests || {}; s.tower = s.tower || { best: 0, cur: 0 }; s.daily = s.daily || {}; s.hardWon = s.hardWon || {}; s.rgBeaten = s.rgBeaten || {}; s.beaten = s.beaten || {}; if (s.gems == null) s.gems = 10; s.pickOffer = s.pickOffer || null; s.restocks = s.restocks || 0; s.stockAt = s.stockAt || 0; return s; }
   const QGEM = { bronze: 1, silver: 3, gold: 6, mythic: 12 }, STOCK_MS = 6 * 3600e3;
   const gemGain = (lines, n, why) => { if (n > 0) { S.gems += n; lines.push(`+💎${n}` + (why ? ' ' + why : '')); } };
   const restockCost = () => Math.ceil(Math.pow(1.6, S.restocks || 0));
@@ -96,9 +102,10 @@
   }
   function bossDeck(b) {
     if (b._deck) return b._deck;
-    const rng = rngSeed(String(b.id).split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7)); const pool = DATA.figures.filter(f => b.rar.includes(f.rarity) && f.mp >= 1);
+    const rng = rngSeed(String(b.id).split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7)); const okT = f => !b.allow || !b.allow.length || f.types.some(t => b.allow.includes(t)); let pool = DATA.figures.filter(f => b.rar.includes(f.rarity) && f.mp >= 1 && okT(f));
+    if (b.allow && b.allow.length && new Set(pool.map(baseName)).size < 14) pool = DATA.figures.filter(f => RAR.indexOf(f.rarity) <= Math.max(...b.rar.map(r => RAR.indexOf(r))) && f.mp >= 1 && okT(f)); // small type pools: widen the rarity range
     const maxR = Math.min(4, Math.max(...b.rar.map(r => RAR.indexOf(r))) + 1); const aceKey = (b.ace || '').toLowerCase();
-    const aces = aceKey ? DATA.figures.filter(f => RAR.indexOf(f.rarity) <= maxR && f.mp >= 1 && (f.name.toLowerCase() === aceKey || f.name.toLowerCase().replace(/^(mega|shiny|alolan|galarian|hisuian|primal)\s+/, '').startsWith(aceKey))).sort((x, y) => RAR.indexOf(y.rarity) - RAR.indexOf(x.rarity)) : [];
+    const aces = aceKey ? DATA.figures.filter(f => RAR.indexOf(f.rarity) <= maxR && f.mp >= 1 && okT(f) && (f.name.toLowerCase() === aceKey || f.name.toLowerCase().replace(/^(mega|shiny|alolan|galarian|hisuian|primal)\s+/, '').startsWith(aceKey))).sort((x, y) => RAR.indexOf(y.rarity) - RAR.indexOf(x.rarity)) : [];
     const themed = pool.filter(f => f.types.some(t => b.types.includes(t))); const ids = []; const used = {};
     if (aces.length) { ids.push(aces[0].id); used[baseName(aces[0])] = 1; }
     const take = list => { if (b.skill > 0.45) list = list.slice().sort((x, y) => y.mp - x.mp); let g = 0; while (list.length && ids.length < 6 && g++ < 400) { const f = list[Math.floor((b.skill > 0.45 ? rng() * rng() : rng()) * list.length)]; const nm = baseName(f); if (used[nm]) continue; used[nm] = 1; ids.push(f.id); } };
@@ -110,11 +117,12 @@
 
   // ---------------------------------------------------------------- deck helpers
   const curDeck = () => S.decks[Math.min(S.active, S.decks.length - 1)];
-  const deckOk = d => d && d.figs.length === 6 && d.figs.every(i => S.owned[i]) && (() => { const need = {}; d.figs.forEach(i => (need[i] = (need[i] || 0) + 1)); return Object.keys(need).every(i => need[i] <= S.owned[i]); })();
+  const deckIds = d => [...d.figs, ...EvoUI.extraIds(d)];
+  const deckOk = d => d && d.figs.length === 6 && deckIds(d).every(i => S.owned[i]) && (() => { const need = {}; deckIds(d).forEach(i => (need[i] = (need[i] || 0) + 1)); return Object.keys(need).every(i => need[i] <= S.owned[i]); })();
   const plateCost = d => d.plates.reduce((a, k) => a + PL[k].cost, 0);
   function canAdd(d, id) {
     if (d.figs.length >= 6 || !S.owned[id]) return false;
-    if (d.figs.filter(x => x === id).length >= S.owned[id]) return false;
+    if (deckIds(d).filter(x => x === id).length >= S.owned[id]) return false;
     return d.figs.filter(x => baseName(fig(x)) === baseName(fig(id))).length < 3;
   }
 
@@ -126,12 +134,12 @@
       el('h2', {}, 'Campaign'),
       el('div', { class: 'coins' }, '🪙 ', el('b', {}, S.coins), el('span', { class: 'gems', title: 'Gems: rare currency from first clears, Tower checkpoints, daily wins and quests. Spend them on shop restocks.' }, ' 💎 ', el('b', {}, S.gems))), auth ? el('button', { class: 'ghost', title: 'Sign out', onclick: () => window.Camp.signOut() }, '👤 ' + auth.name + ' ⏏') : '',
       el('div', { class: 'small muted' }, `Collection ${Object.keys(S.owned).length}/${DATA.figures.length} · Wins ${S.wins} · Shop tier: `, el('b', { style: 'color:' + RCOL[RAR[t]] }, RNAME[RAR[t]] + (t < 4 ? ' → beat bosses to unlock more' : ' (max)'))),
-      el('div', { class: 'tabs' }, ...[['battle', '⚔ Story'], ['tower', '🗼 Tower'], ['quest', '📜 Quests' + (questsReady() ? ' ❗' : '')], ['coll', '🎒 Collection'], ['decks', '🃏 Decks'], ['pvp', '🤝 PvP'], ['shop', '🛒 Shop & Chests']].map(([k, n]) => el('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; render(); } }, n))));
+      el('div', { class: 'tabs' }, ...[['battle', '⚔ Story'], ['regions', '🗺 Regions'], ['tower', '🗼 Tower'], ['quest', '📜 Quests' + (questsReady() ? ' ❗' : '')], ['coll', '🎒 Collection'], ['decks', '🃏 Decks'], ['pvp', '🤝 PvP'], ['shop', '🛒 Shop & Chests']].map(([k, n]) => el('button', { class: tab === k ? 'on' : '', onclick: () => { tab = k; render(); } }, n))));
   }
   function render() {
     if (!S) return; const root = $c('camp'); root.innerHTML = '';
     const body = el('div', { class: 'campbody' }); root.append(head(), body);
-    ({ battle: tBattle, tower: tTower, quest: tQuest, coll: tColl, decks: tDecks, shop: tShop, pvp: tPvp })[tab](body);
+    ({ battle: tBattle, regions: tRegions, tower: tTower, quest: tQuest, coll: tColl, decks: tDecks, shop: tShop, pvp: tPvp })[tab](body);
   }
   function rarTag(f) { return el('span', { class: 'rtag', style: 'background:' + RCOL[f.rarity] }, f.rarity); }
   function mini(f, extra, onclick) {
@@ -146,7 +154,7 @@
     const rec = el('div', { class: 'panel mini' }, 'Loading PvP record…');
     api('/api/pvp').then(r => { rec.innerHTML = ''; const top = r.top || []; rec.append(el('b', {}, 'Your PvP record: '), `${r.me.w} W – ${r.me.l} L`, el('h4', {}, 'Top duelists'), ...(top.length ? top.map((x, i) => el('div', { class: 'small' }, `${i + 1}. ${x.name} — ${x.w}W ${x.l}L`)) : [el('div', { class: 'small muted' }, 'No PvP games yet – be the first!')])); }).catch(() => { rec.textContent = 'PvP record unavailable.'; });
     const code = el('input', { placeholder: 'ROOM CODE', maxlength: 4, style: 'text-transform:uppercase;width:110px' });
-    const go = async t => { if (!ok || !auth) return; await flush(); window.pvpMode = true; const d = curDeck(); window.pvpLast = { auth: auth.token, deck: { figs: d.figs.slice(), plates: d.plates.slice() } }; note.classList.add('hidden'); send({ t, owned: true, auth: auth.token, name: auth.name, code: code.value, deck: window.pvpLast.deck }); };
+    const go = async t => { if (!ok || !auth) return; await flush(); window.pvpMode = true; const d = curDeck(); window.pvpLast = { auth: auth.token, deck: { figs: d.figs.slice(), plates: d.plates.slice(), evo: d.evo, mega: d.mega } }; note.classList.add('hidden'); send({ t, owned: true, auth: auth.token, name: auth.name, code: code.value, deck: window.pvpLast.deck }); };
     body.append(el('div', { class: 'panel' }, el('h3', {}, '🤝 Collection PvP'), el('div', { class: 'muted' }, 'Duel another signed-in player using only the Pokémon and plates you own (your active deck). The server checks your collection. Wins and losses go on your PvP record; coins, chests and progress are not affected.'),
       el('div', { class: 'row gap', style: 'margin-top:10px' }, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('create') }, 'Create room'), code, el('button', { class: 'primary', disabled: ok ? null : '', onclick: () => go('quick') }, '⚡ Quick match'), el('button', { disabled: ok ? null : '', onclick: () => go('join') }, 'Join room')), casualRow(note, false, () => { const d = curDeck(); return deckOk(d) ? { figs: d.figs.slice(), plates: d.plates.slice() } : null; }), note), rec);
   }
@@ -183,10 +191,10 @@
   }
   function preFight(b) {
     const bd = bossDeck(b); const ov = el('div', { class: 'overlay chestov' });
-    const box = el('div', { class: 'chestbox storybox' }, el('div', { class: 'small muted' }, b.ch != null && b.fi != null ? `Chapter ${b.ch + 1} · ${CH[b.ch].name}` : b.kind === 'tower' ? 'Battle Tower' : 'Daily Challenge'),
+    const box = el('div', { class: 'chestbox storybox' }, el('div', { class: 'small muted' }, b.ch != null && b.fi != null ? `Chapter ${b.ch + 1} · ${CH[b.ch].name}` : b.kind === 'tower' ? 'Battle Tower' : b.kind === 'region' ? `${b.rg.icon} ${b.region}` + (b.allow.length ? ' · allowed: ' + b.allow.join(', ') : ' · no type limits') : 'Daily Challenge'),
       el('div', { class: 'storyface' }, img(fig(bd.figs[0]))), el('h3', {}, b.name), el('div', { class: 'muted' }, b.title),
       el('div', { class: 'quote' }, '“' + (b.say || '...') + '”'), el('div', { class: 'bteam' }, ...bd.figs.map(id => el('span', { title: fig(id).name }, img(fig(id))))),
-      el('div', { class: 'small muted', id: 'pfRew' }, `Win 🪙${S.beaten[b.id] ? Math.floor(b.reward * 0.3) : b.reward} · Lose −🪙${b.fee}`),
+      el('div', { class: 'small muted', id: 'pfRew' }, b.kind === 'region' ? `Win: spin the wheel — 🔵 Pokémon or 🔴 coins · Lose −🪙${b.fee}` : `Win 🪙${S.beaten[b.id] ? Math.floor(b.reward * 0.3) : b.reward} · Lose −🪙${b.fee}`),
       b.kind ? '' : el('label', { class: 'hardopt', title: 'Opponent plays near-perfectly. Double coins, double defeat fee, and the first Hard win of each fight gives a bonus chest.' }, el('input', { type: 'checkbox', id: 'hardChk', onchange: e => { const h = e.target.checked, r = S.beaten[b.id] ? Math.floor(b.reward * 0.3) : b.reward; $c('pfRew').textContent = h ? `🔥 HARD · Win 🪙${r * 2}${S.hardWon[b.id] ? '' : ' + 🎁 bonus chest'} · Lose −🪙${b.fee * 2}` : `Win 🪙${r} · Lose −🪙${b.fee}`; } }), ' 🔥 Hard mode (stronger opponent, 2× coins)'),
       el('div', { class: 'row' }, el('button', { class: 'primary', onclick: () => { const h = !!($c('hardChk') && $c('hardChk').checked); ov.remove(); fight(h ? { ...b, hard: true, skill: Math.min(0.99, Math.max(b.skill + 0.2, 0.9)), reward: b.reward * 2, fee: b.fee * 2 } : b); } }, 'Fight!'), el('button', { class: 'ghost', onclick: () => ov.remove() }, 'Not yet')));
     ov.append(box); document.body.append(ov);
@@ -247,6 +255,9 @@
     { id: 'hard10', n: 'Hard Mode: Veteran', d: 'Win 10 different fights on Hard', k: () => Object.keys(S.hardWon).length, g: 10, r: { coins: 2500, chest: 'gold' } },
     { id: 'hard40', n: 'Hard Mode: Master', d: 'Win 40 different fights on Hard', k: () => Object.keys(S.hardWon).length, g: 40, r: { coins: 8000, chest: 'mythic' } },
     { id: 'stAll', n: 'Story: Complete', d: 'Beat all ' + BOSSES.length + ' story fights', k: () => Object.keys(S.beaten).length, g: BOSSES.length, r: { coins: 8000, chest: 'mythic' } },
+    { id: 'rg1', n: 'Regional Champion', d: 'Clear 1 region', k: () => RG.filter((_, i) => rgDone(i)).length, g: 1, r: { coins: 800, chest: 'bronze' } },
+    { id: 'rg4', n: 'Globetrotter', d: 'Clear 4 regions', k: () => RG.filter((_, i) => rgDone(i)).length, g: 4, r: { coins: 2500, chest: 'gold' } },
+    { id: 'rgAll', n: 'World Champion', d: 'Clear every region', k: () => RG.filter((_, i) => rgDone(i)).length, g: RG.length, r: { coins: 8000, chest: 'mythic' } },
     { id: 't5', n: 'Tower: 5', d: 'Reach floor 5', k: () => S.tower.best, g: 5, r: { coins: 400 } },
     { id: 't15', n: 'Tower: 15', d: 'Reach floor 15', k: () => S.tower.best, g: 15, r: { coins: 1200, chest: 'silver' } },
     { id: 't30', n: 'Tower: 30', d: 'Reach floor 30', k: () => S.tower.best, g: 30, r: { coins: 3000, chest: 'gold' } },
@@ -284,12 +295,13 @@
     body.append(el('div', { class: 'collgrid' }, el('div', {}, bar, g), el('div', {}, sb, el('div', { id: 'campInfo', class: 'card campcard' })))); grid();
   }
 
+  const ownFree = (d, id) => (S.owned[id] || 0) > deckIds(d).filter(x => x === id).length;
   function tDecks(body) {
     editDeck = Math.min(editDeck, S.decks.length - 1); const d = S.decks[editDeck];
     const tabs = el('div', { class: 'tabs' }, ...S.decks.map((x, i) => el('button', { class: i === editDeck ? 'on' : '', onclick: () => { editDeck = i; render(); } }, x.name + (i === S.active ? ' ★' : ''))),
       S.decks.length < 5 ? el('button', { onclick: () => { S.decks.push({ name: 'Deck ' + (S.decks.length + 1), figs: [], plates: [] }); editDeck = S.decks.length - 1; save(); render(); } }, '+ New deck') : '');
-    const slots = el('div', { class: 'slots' });
-    for (let i = 0; i < 6; i++) { const id = d.figs[i]; const s = el('div', { class: 'slot', onclick: () => { if (id) { d.figs.splice(i, 1); save(); render(); } } }); if (id) { s.append(img(fig(id)), fig(id).name); s.onmouseenter = () => infoCard($c('campInfo'), fig(id)); } else s.append('Empty'); slots.append(s); }
+    const slots = el('div', { class: 'slots' }); EvoUI.norm(d);
+    for (let i = 0; i < 6; i++) { const id = d.figs[i]; const s = el('div', { class: 'slot', onclick: () => { if (id) { EvoUI.removeSlot(d, i); save(); render(); } } }); if (id) { s.append(img(fig(id)), fig(id).name); s.onmouseenter = () => infoCard($c('campInfo'), fig(id)); } else s.append('Empty'); slots.append(el('div', { class: 'slotwrap' }, s, EvoUI.extras(d, i, xid => ownFree(d, xid), () => { save(); render(); }))); }
     const pl = el('div', { class: 'plates' });
     d.plates = d.plates.filter(k => S.plates[k]);
     for (const k of Object.keys(PL)) { const Pp = PL[k]; const on = d.plates.includes(k); const lock = !S.plates[k]; pl.append(el('div', { class: 'plate' + (on ? ' on' : '') + (lock ? ' locked' : ''), title: lock ? 'Locked – buy it in the Shop, or win it from bosses and chests.' : Pp.text, onclick: () => { if (lock) return; if (on) d.plates = d.plates.filter(x => x !== k); else if (plateCost(d) + Pp.cost <= 6) d.plates.push(k); save(); render(); } }, el('span', { class: 'dot', style: 'background:' + (COL[Pp.color] || '#f78fb3') }), Pp.name, el('span', { class: 'muted' }, ' ' + Pp.cost), lock ? el('span', { class: 'lock' }, ' 🔒') : '', el('div', { class: 'small muted' }, Pp.text))); }
@@ -301,12 +313,12 @@
       el('div', {}, el('div', { class: 'panel mini' }, el('b', {}, d.name), ' ', el('button', { class: 'ghost', onclick: () => { const n = prompt('Deck name', d.name); if (n) { d.name = n.slice(0, 18); save(); render(); } } }, 'Rename'), ' ',
         el('button', { class: 'ghost', onclick: () => { S.active = editDeck; save(); render(); } }, S.active === editDeck ? '★ Active' : 'Set active'), ' ',
         S.decks.length > 1 ? el('button', { class: 'ghost', onclick: () => { if (confirm('Delete this deck?')) { S.decks.splice(editDeck, 1); S.active = 0; editDeck = 0; save(); render(); } } }, 'Delete') : '',
-        el('h4', {}, `Team (${d.figs.length}/6)`), slots, el('div', { class: 'row' }, el('button', { class: 'ghost', onclick: () => { d.figs = []; save(); render(); } }, 'Clear'), el('button', { class: 'ghost', onclick: () => { autoFill(d); save(); render(); } }, 'Auto-fill best')),
+        el('h4', {}, `Team (${d.figs.length}/6)`), slots, el('div', { class: 'hint', style: 'font-size:12px;opacity:.75;margin:6px 0' }, '✨ Evolutions: if you own the later stages (e.g. Charmeleon, Charizard) a ＋ Evolution button appears under that Pokémon. They do not use team slots. 💎 Mega forms need the Mega Ring plate.'), el('div', { class: 'row' }, el('button', { class: 'ghost', onclick: () => { EvoUI.clear(d); save(); render(); } }, 'Clear'), el('button', { class: 'ghost', onclick: () => { autoFill(d); save(); render(); } }, 'Auto-fill best')),
         el('h4', {}, `Plates (${plateCost(d)}/6)`), pl, el('div', { class: deckOk(d) ? 'muted' : 'err' }, deckOk(d) ? 'Deck ready.' : 'Needs 6 Pokémon you own.')), el('div', { id: 'campInfo', class: 'card campcard' }))));
   }
   function autoFill(d) {
     const ids = Object.keys(S.owned).map(Number).filter(i => fig(i)).sort((a, b) => RAR.indexOf(fig(b).rarity) - RAR.indexOf(fig(a).rarity) || fig(b).mp - fig(a).mp);
-    d.figs = []; for (const id of ids) { while (canAdd(d, id) && d.figs.filter(x => x === id).length < 1) d.figs.push(id); if (d.figs.length >= 6) break; }
+    EvoUI.clear(d); EvoUI.norm(d); for (const id of ids) { while (canAdd(d, id) && d.figs.filter(x => x === id).length < 1) d.figs.push(id); if (d.figs.length >= 6) break; }
     if (d.figs.length < 6) for (const id of ids) { while (canAdd(d, id)) d.figs.push(id); if (d.figs.length >= 6) break; }
   }
 
@@ -395,12 +407,13 @@
   // ---------------------------------------------------------------- fighting
   function fight(b) {
     const d = curDeck(); if (!deckOk(d)) return;
+    if (b.allow && b.allow.length && rgBad(b.rg, d).length) { alert('This region only allows ' + b.allow.join(' / ') + ' types. Not allowed in your deck: ' + rgBad(b.rg, d).map(i => fig(i).name).join(', ')); return; }
     cur = b; window.pvpMode = false; window.campFight = { id: b.id }; const bd = bossDeck(b);
-    send({ t: 'bot', auth: auth && auth.token, name: ($('#name') && $('#name').value) || 'Trainer', deck: { figs: d.figs, plates: d.plates }, boss: { name: b.name, deck: bd, skill: b.skill, stage: b.id, fee: Math.min(S.coins, b.fee) } });
+    send({ t: 'bot', auth: auth && auth.token, name: ($('#name') && $('#name').value) || 'Trainer', deck: { figs: d.figs, plates: d.plates, evo: d.evo, mega: d.mega }, boss: { name: b.name, deck: bd, allow: b.allow || undefined, skill: b.skill, stage: b.id, fee: Math.min(S.coins, b.fee) } });
   }
   function finish(v) {
     const b = cur; if (!b || done) return null; done = true; const box = el('div', { class: 'reward' }, el('div', { class: 'muted' }, 'Verifying result…'));
-    const run = win => { const el2 = apply(b, win); box.innerHTML = ''; el2.childNodes.forEach(n => box.append(n.cloneNode(true))); };
+    const run = win => { const el2 = apply(b, win); box.innerHTML = ''; el2.childNodes.forEach(n => box.append(n.cloneNode(true))); const nx = win ? nextStage(b) : null; if (nx) box.append(el('button', { class: 'primary nextbtn', onclick: () => playNext(nx) }, '▶ Next: ' + nx.name + (nx.kind === 'tower' ? ' (floor ' + nx.floor + ')' : ''))); };
     if (auth) api('/api/claim').then(r => { const x = r.result; run(x && !x.pending && x.stage === b.id ? !!x.win : false); }).catch(() => run(v.winner === v.seat)); else run(v.winner === v.seat);
     return box;
   }
@@ -414,6 +427,8 @@
         if (b.floor % 5 === 0 && newBest) gemGain(lines, b.floor >= 30 ? 5 : b.floor >= 15 ? 3 : 2, 'Tower checkpoint');
         if (b.floor % 5 === 0) { const ck = b.floor >= 30 ? 'gold' : b.floor >= 15 ? 'silver' : 'bronze'; S.free[ck] = (S.free[ck] || 0) + 1; lines.push(`Checkpoint reached! 🎁 Free ${FREE_NAMES[ck]}`); }
         lines.push(`Next: floor ${b.floor + 1}`);
+      } else if (b.kind === 'region') {
+        regionWin(b, lines);
       } else if (b.kind === 'daily') {
         S.coins += b.reward; S.daily = { key: b.key, won: true }; S.stats.daily = (S.stats.daily || 0) + 1; S.free.silver = (S.free.silver || 0) + 1; lines.push(`+🪙${b.reward}`, '🎁 Free Silver Chest!'); gemGain(lines, 2, 'Daily Challenge');
       } else {
@@ -433,6 +448,75 @@
     }
     save();
     return el('div', { class: 'reward' }, ...lines.map(x => el('div', {}, x)));
+  }
+
+  // ---------------------------------------------------------------- regions + wheel + next-stage
+  const rgOk = (rg, id) => !rg.allow.length || fig(id).types.some(t => rg.allow.includes(t));
+  const rgBad = (rg, d) => d.figs.filter(i => !rgOk(rg, i));
+  const rgStages = ri => RGSTAGES.filter(b => b.ri === ri);
+  const rgDone = ri => rgStages(ri).every(b => S.rgBeaten[b.id]);
+  const rgOpen = ri => ri === 0 || rgDone(ri - 1);
+  const rgStageOpen = b => rgOpen(b.ri) && (b.fi === 0 || S.rgBeaten[rgStages(b.ri)[b.fi - 1].id]);
+  function nextStage(b) {
+    if (b.kind === 'region') { const same = rgStages(b.ri)[b.fi + 1]; if (same) return same; const nx = RGSTAGES.find(x => x.ri === b.ri + 1 && x.fi === 0); return nx && rgOpen(nx.ri) ? nx : null; }
+    if (b.kind === 'tower') return towerStage(S.tower.cur + 1);
+    if (b.kind === 'daily') return null;
+    const nx = BOSSES[b.idx + 1]; return nx && isOpen(nx) ? nx : null;
+  }
+  async function playNext(nx) {
+    window.pvpMode = false; window.campFight = null; try { sessionStorage.removeItem('duel_session'); } catch (e) { } V = null; $c('endOverlay').classList.add('hidden');
+    await flush(); done = false; tab = nx.kind === 'region' ? 'regions' : nx.kind === 'tower' ? 'tower' : 'battle'; if (nx.kind === 'region') openRg = nx.ri; else if (nx.ch != null) openCh = nx.ch; show('camp'); render(); preFight(nx);
+  }
+  function wheelEl(blue) { // half blue (Pokémon) / half red (coins); the result is decided first, the animation only shows it
+    const a = 15 + Math.random() * 150, end = 360 * 6 - (blue ? a : 180 + a);
+    return el('div', { class: 'rwheel' }, el('div', { class: 'rwptr' }, '▼'), el('div', { class: 'rwdisc', style: `--end:${end}deg` }, el('span', { class: 'rwl rwb' }, '🔵'), el('span', { class: 'rwl rwr' }, '🔴')), el('div', { class: 'rwkey' }, '🔵 Pokémon · 🔴 Coins'));
+  }
+  function regionWin(b, lines) {
+    const first = !S.rgBeaten[b.id]; S.rgBeaten[b.id] = 1; const base = Math.round(b.reward * (first ? 1 : 0.5));
+    const blue = Math.random() < 0.5; lines.push(wheelEl(blue)); const later = t => { const d = el('div', { class: 'rwlater' }, t); lines.push(d); };
+    if (blue) {
+      const bd = bossDeck(b); let id;
+      if (first && b.last) id = bd.figs[0]; else if (Math.random() < 0.5) id = bd.figs[(Math.random() * bd.figs.length) | 0]; else { const mr = Math.max(...b.rar.map(r => RAR.indexOf(r))); const pl = DATA.figures.filter(f => RAR.indexOf(f.rarity) <= mr && RAR.indexOf(f.rarity) >= Math.max(0, mr - 1) && rgOk(b.rg, f.id)); id = (pl.length ? pl[(Math.random() * pl.length) | 0] : fig(bd.figs[0])).id; }
+      S.owned[id] = (S.owned[id] || 0) + 1; const f = fig(id); const c = Math.round(base * 0.25); S.coins += c; S.stats.earned += c; later(`🔵 ${f.name} (${RNAME[f.rarity]}) joins your collection!  +🪙${c}`);
+    } else { const c = Math.round(base * 1.8); S.coins += c; S.stats.earned += c; later(`🔴 +🪙${c}`); }
+    if (first) {
+      if (b.last) { gemGain(lines, 4, 'region cleared'); const ch = ['bronze', 'bronze', 'silver', 'silver', 'gold', 'gold', 'mythic'][b.ri] || 'gold'; S.free[ch] = (S.free[ch] || 0) + 1; later(`🏅 ${b.rg.badge} earned! 🎁 Free ${FREE_NAMES[ch] || 'Gold Chest'}`); plateDrop(lines, 'region reward'); const nr = RG[b.ri + 1]; later(nr ? `${nr.icon} Next region unlocked: ${nr.name}` : '👑 Every region conquered!'); }
+      else if (b.fi % 2 === 1) gemGain(lines, 1, 'first victory');
+    }
+  }
+  function autoDeck(rg) {
+    const ord = { C: 0, UC: 1, R: 2, EX: 3, UX: 4 }; const own = Object.keys(S.owned).map(Number).filter(i => fig(i) && rgOk(rg, i)).sort((a, b) => (ord[fig(b).rarity] - ord[fig(a).rarity]) || fig(b).mp - fig(a).mp);
+    const ids = [], cnt = {}; for (const i of own) { const nm = baseName(fig(i)); for (let k = 0; k < S.owned[i] && ids.length < 6 && (cnt[nm] || 0) < 2; k++) { ids.push(i); cnt[nm] = (cnt[nm] || 0) + 1; } if (ids.length >= 6) break; }
+    if (ids.length < 6) { alert(`You only own ${ids.length} Pokémon with ${rg.allow.join('/')} types. Win some fights, open chests or visit the shop to get more!`); return; }
+    const name = rg.name + ' Team'; let di = S.decks.findIndex(d => d.name === name);
+    if (di < 0) { if (S.decks.length < 5) { S.decks.push({ name, figs: [], plates: curDeck().plates.slice() }); di = S.decks.length - 1; } else { if (!confirm('You have 5 decks. Replace your last deck with a team for this region?')) return; di = S.decks.length - 1; S.decks[di].name = name; } }
+    S.decks[di].figs = ids; S.active = di; save(); render();
+  }
+  function rgCard(b) {
+    const open = rgStageOpen(b), beaten = !!S.rgBeaten[b.id], d = curDeck(), deckGood = deckOk(d), bad = deckGood ? rgBad(b.rg, d) : []; const bd = bossDeck(b);
+    return el('div', { class: 'boss' + (beaten ? ' beaten' : '') + (open ? '' : ' locked') + (b.last ? ' bigboss' : '') },
+      el('div', { class: 'bface' }, open ? img(fig(bd.figs[0])) : el('div', { class: 'lock' }, '🔒')),
+      el('div', { class: 'binfo' }, el('div', { class: 'bt' }, (b.last ? '👑 ' : '') + b.title), el('div', { class: 'bn' }, b.name, beaten ? ' ✔' : ''),
+        el('div', { class: 'small muted' }, 'Skill ', '★'.repeat(Math.max(1, Math.round(b.skill * 5))), ' · Win = 🎡 wheel: 🔵 Pokémon / 🔴 coins'),
+        open ? el('div', { class: 'bteam' }, ...bd.figs.map(id => el('span', { title: fig(id).name, onmouseenter: () => infoCard($c('campInfo'), fig(id)) }, img(fig(id))))) : el('div', { class: 'small muted' }, 'Defeat the previous trainer first')),
+      el('button', { class: 'primary', ...(!open || !deckGood || bad.length ? { disabled: '', title: bad.length ? 'Your deck has types this region does not allow' : '' } : {}), onclick: () => preFight(b) }, beaten ? 'Rematch' : 'Fight'));
+  }
+  function tRegions(body) {
+    deckBar(body); if (openRg == null) openRg = Math.max(0, RG.findIndex((_, i) => !rgDone(i)));
+    const wrap = el('div', { class: 'chapters' });
+    RG.forEach((rg, ri) => {
+      const stg = rgStages(ri), done = stg.filter(b => S.rgBeaten[b.id]).length, unlocked = rgOpen(ri), d = curDeck(), bad = deckOk(d) ? rgBad(rg, d) : [];
+      wrap.append(el('div', { class: 'chhead' + (unlocked ? '' : ' locked') + (openRg === ri ? ' on' : ''), onclick: () => { if (!unlocked) return; openRg = openRg === ri ? -1 : ri; render(); } },
+        el('span', { class: 'chico' }, unlocked ? rg.icon : '🔒'), el('div', { class: 'chmeta' }, el('b', {}, `${rg.name}`), el('div', { class: 'small muted' }, unlocked ? rg.blurb : 'Clear ' + RG[ri - 1].name + ' to unlock'),
+          el('div', { class: 'tags' }, ...(rg.allow.length ? rg.allow.map(t => el('span', { class: 'tag' }, t)) : [el('span', { class: 'tag' }, 'all types')]))),
+        el('div', { class: 'chprog' }, el('div', { class: 'bar' }, el('i', { style: `width:${done / stg.length * 100}%` })), el('span', { class: 'small' }, `${done}/${stg.length}`, done === stg.length ? ' · ' + rg.badge + ' 🏅' : ''))));
+      if (openRg === ri && unlocked) {
+        if (bad.length) wrap.append(el('div', { class: 'notice err' }, `Your active deck has Pokémon this region does not allow (${bad.map(i => fig(i).name).join(', ')}). `, el('button', { class: 'primary', onclick: () => autoDeck(rg) }, '🪄 Build a team from my collection'), el('div', { class: 'small muted' }, 'Not enough matching Pokémon yet? Win fights, open chests or visit the shop to collect more of these types.')));
+        else if (rg.allow.length && deckOk(d) && !bad.length) wrap.append(el('div', { class: 'small muted', style: 'padding:4px 8px' }, '✔ Your active deck fits this region. ', el('button', { class: 'ghost', onclick: () => autoDeck(rg) }, 'Build a stronger team for it')));
+        const lst = el('div', { class: 'bosses' }); stg.forEach(b => lst.append(rgCard(b))); wrap.append(lst);
+      }
+    });
+    body.append(wrap, el('div', { id: 'campInfo', class: 'card campcard' }));
   }
 
   function loginScreen(msg) {
@@ -472,17 +556,17 @@
     const box = el('div', { class: 'panel mini' }, el('b', {}, '🎒 Play PvP with my collection'), el('div', { class: 'small muted' }, 'Loading your decks…')); host.append(box);
     const r = await api('/api/save'); if (!r.save) { box.lastChild.textContent = r.status === 401 ? 'Session expired – sign in again from Campaign.' : 'No campaign collection yet – start the Campaign first.'; return; }
     const sv2 = r.save, own = sv2.owned || {}, pls = sv2.plates || {};
-    const ok = d => d && d.figs && d.figs.length === 6 && (() => { const need = {}; d.figs.forEach(i => (need[i] = (need[i] || 0) + 1)); return Object.keys(need).every(i => (own[i] || 0) >= need[i]); })() && new Set(d.plates || []).size === (d.plates || []).length && (d.plates || []).every(k => pls[k]);
+    const ok = d => d && d.figs && d.figs.length === 6 && (() => { const need = {}; [...d.figs, ...(d.evo || []).flat(), ...(d.mega || []).filter(Boolean)].forEach(i => (need[i] = (need[i] || 0) + 1)); return Object.keys(need).every(i => (own[i] || 0) >= need[i]); })() && new Set(d.plates || []).size === (d.plates || []).length && (d.plates || []).every(k => pls[k]);
     const decks = (sv2.decks || []).map((d, i) => ({ d, i })).filter(x => ok(x.d));
     if (!decks.length) { box.lastChild.textContent = 'You have no complete 6-Pokémon deck yet – build one in Campaign → Decks.'; return; }
     const sel = el('select', {}, ...decks.map(x => el('option', { value: x.i }, x.d.name + ' (' + x.d.figs.map(i => (fig(i) || { name: '?' }).name).join(', ') + ')'))); sel.value = String(decks.find(x => x.i === sv2.active) ? sv2.active : decks[0].i);
     const code = el('input', { placeholder: 'ROOM CODE', maxlength: 4, style: 'text-transform:uppercase;width:140px' });
     const note = el('div', { class: 'notice hidden lobbyNote' });
-    const go = t => { const d = sv2.decks[+sel.value]; const nm = auth.name; window.pvpMode = true; window.pvpLast = { auth: auth.token, deck: { figs: d.figs.slice(), plates: (d.plates || []).slice() } }; note.classList.add('hidden'); send({ t, owned: true, auth: auth.token, name: nm, code: code.value, deck: window.pvpLast.deck }); };
+    const go = t => { const d = sv2.decks[+sel.value]; const nm = auth.name; window.pvpMode = true; window.pvpLast = { auth: auth.token, deck: { figs: d.figs.slice(), plates: (d.plates || []).slice(), evo: d.evo, mega: d.mega } }; note.classList.add('hidden'); send({ t, owned: true, auth: auth.token, name: nm, code: code.value, deck: window.pvpLast.deck }); };
     const cancel = el('button', { class: 'ghost', onclick: () => { send({ t: 'cancelq' }); note.classList.add('hidden'); } }, 'Cancel search');
     box.lastChild.replaceWith(el('div', { class: 'small muted' }, 'Uses only cards you own; counts on the PvP ladder (bot fill-ins do not). Quick match pairs with another signed-in player.'));
     box.append(sel, el('div', { class: 'row gap', style: 'margin-top:6px' }, el('button', { class: 'primary', onclick: () => go('quick') }, '⚡ Quick match'), el('button', { class: 'primary', onclick: () => go('create') }, 'Create room'), ),
-      el('div', { class: 'row gap', style: 'margin-top:6px' }, code, el('button', { onclick: () => go('join') }, 'Join room'), cancel), casualRow(note, true, () => { const d = sv2.decks[+sel.value]; return d ? { figs: d.figs.slice(), plates: (d.plates || []).slice() } : null; }), note);
+      el('div', { class: 'row gap', style: 'margin-top:6px' }, code, el('button', { onclick: () => go('join') }, 'Join room'), cancel), casualRow(note, true, () => { const d = sv2.decks[+sel.value]; return d ? { figs: d.figs.slice(), plates: (d.plates || []).slice(), evo: d.evo, mega: d.mega } : null; }), note);
   }
   window.Camp = {
     lobbyPanel,
@@ -490,7 +574,7 @@
     open() { S = null; window.campFight = null; done = false; show('camp'); start(); },
     signOut() { flush(); clearTimeout(saveT); dirty = false; auth = null; S = null; mem = null; try { localStorage.removeItem('duel_auth'); } catch (e) { } loginScreen(); },
     auth: () => auth,
-    finish, reset() { done = false; }, bosses: BOSSES,
+    finish, reset() { done = false; }, bosses: BOSSES, _t: { apply, nextStage, playNext, regions: RGSTAGES, bossDeck, rgBad, S: () => S },
     pvpMsg(t, isErr) { const n = [...document.querySelectorAll('#pvpNote, .lobbyNote')].find(x => x.closest('.screen:not(.hidden)')); if (!n) return false; const lob = n.classList.contains('lobbyNote'); n.className = 'notice' + (isErr ? ' err' : '') + (lob ? ' lobbyNote' : ''); n.textContent = t; return true; },
     pvpRematch() { const L = window.pvpLast; if (L) send({ t: 'rematch', auth: L.auth, deck: L.deck }); },
     leaveToCamp() { window.pvpMode = false; window.campFight = null; sessionStorage.removeItem('duel_session'); V = null; window.Camp.open(); },

@@ -213,7 +213,7 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
 { const LX = require('../lib/figures').LIST; const g13 = setup(['Lycanroc Midday Form','Pikachu','Eevee','Jolteon','Stantler','Popplio'], ['Sharpedo','Tsareena','Garbodor','Ivysaur','Gible','Metang']);
   const Ly = Object.values(g13.figs).find(f => f.owner === 0 && LX.find(x => x.id === f.fid).name === 'Lycanroc Midday Form'); place(g13, Ly, 'I00'); Ly.wait = 2;
   g13.cur = 0; g13.phase = 'main'; g13.moved = false; g13.turn = 3;
-  ok(E.legal(g13).loyalty.includes(Ly.uid), 'Loyalty offered to Lycanroc'); ok(T.baseMp(g13, Ly) === 3, 'evolved Lycanroc has MP 3');
+  ok(E.legal(g13).loyalty.includes(Ly.uid), 'Loyalty offered to Lycanroc'); ok(T.baseMp(g13, Ly) === 2, 'unevolved Lycanroc has base MP'); Ly.evolved = true; ok(T.baseMp(g13, Ly) === 3, 'evolved Lycanroc has MP 3'); Ly.evolved = false;
   const r = E.apply(g13, 0, { t: 'loyalty', uid: Ly.uid }); ok(!r.error && Ly.loc === 'bench' && Ly.wait === 0 && !g13.moved, 'Loyalty returns it to the bench, clears Wait, turn continues'); }
 
 // 27 colour priority: Gold beats Purple, White loses to Purple
@@ -404,6 +404,24 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
   const seg = FIGS[dk.id].segs.find(x => x.name === 'Dark Leap'); T.runOps(g, seg.ops, { self: D, opp: X, oppPos: X.pos, selfPos: D.pos });
   ok(g.tasks.length === 1 && g.tasks[0].waitIfMoved && D.wait === 0, 'Dark Leap offers a 2-step move and no Wait yet');
   const opts = T.taskOptions(g, g.tasks[0]); ok(opts.length > 0, 'Dark Leap has destinations'); const t0 = g.tasks.shift(); T.applyTask(g, t0, opts[0]); ok(D.wait === 1 && D.pos === opts[0], 'Dark Leap: Wait only after moving'); const g2tasks = 0; }
+{ const mi = LIST.find(f => f.name === 'Mimikyu' && f.rules.some(r => r.k === 'disguise')); ok(!!mi && LIST.find(f => f.id === 628).segs.length >= 5, 'Mimikyu Disguise parsed; Shiny Mimikyu has its wheel');
+  const g = E.newGame([{ figs: [mi.id, ...fill.slice(0, 5).map(byName)], plates: [] }, { figs: fill.slice(5, 11).map(byName), plates: [] }], ['A', 'B'], 9); const M = Object.values(g.figs).find(f => f.owner === 0 && f.fid === mi.id); place(g, M, 'I01'); M.disguise = true;
+  const X = Object.values(g.figs).find(f => f.owner === 1 && FIGS[f.fid].segs.some(s => s.color === 'White' && s.dmg.n >= 60)); place(g, X, 'I10'); g.cur = 1; let saved = 0;
+  for (let i = 0; i < 40 && M.disguise; i++) { M.st = ['poisoned']; try { T.battle(g, X.uid, M.uid); } catch (e) { } if (M.loc === 'field' && !M.disguise) saved++; if (M.loc !== 'field') break; }
+  ok(saved === 1 || M.loc === 'field', 'Disguise absorbs one knockout (' + saved + ')'); }
+{ const g = setup(pad(['Sandshrew'], fill), pad(['Rattata'], fill)); const S = u(g, 0, 'Sandshrew'), X = u(g, 1, 'Rattata'); place(g, S, 'I01'); place(g, X, 'I00');
+  const o = T.taskOptions(g, { kind: 'evade', uid: S.uid, attacker: X.uid, mode: 'past' }); ok(o.length > 0 && o.every(p => !g.occ[p]), 'Sand Veil offers a free spot to slip past the attacker (' + o.join(',') + ')');
+  S.taunt = { until: g.seq + 2 }; ok(E.view(g, 0).figs.find(f => f.uid === S.uid).tn === true, 'taunt is exposed to the client'); }
+// ---- v10.65 conditional-status moves ----
+{
+  const { LIST } = require('../lib/figures'); const seg = (id, n) => LIST.find(x => x.id == id).segs.find(x => x.name === n);
+  const mkG = fid => { const g = E.newGame([{ figs: [fid, 1, 2, 3, 4, 5], plates: [] }, { figs: [6, 7, 8, 9, 10, 11], plates: [] }], ['A', 'B'], 5); const me = Object.values(g.figs).find(x => x.owner === 0 && x.fid === fid), op = Object.values(g.figs).find(x => x.owner === 1); me.loc = 'field'; E._t.setPos(g, me, 'I01'); op.loc = 'field'; E._t.setPos(g, op, 'I00'); return { g, me, op }; };
+  let r = mkG(241); r.op.st = ['burned']; E._t.runOps(r.g, seg(241, 'Skull Bash').ops, { self: r.me, opp: r.op, oppPos: 'I00', selfPos: 'I01' }); ok(r.op.loc !== 'field', 'Skull Bash KOs a statused opponent');
+  r = mkG(241); E._t.runOps(r.g, seg(241, 'Skull Bash').ops, { self: r.me, opp: r.op, oppPos: 'I00', selfPos: 'I01' }); ok(r.op.loc === 'field' && r.op.wait >= 3, 'Skull Bash only waits a clean opponent');
+  r = mkG(231); r.op.st = ['frozen']; E._t.runOps(r.g, seg(231, 'Sheer Cold').ops, { self: r.me, opp: r.op, oppPos: 'I00', selfPos: 'I01' }); ok(r.op.loc === 'removed', 'Sheer Cold excludes a frozen opponent');
+  r = mkG(231); E._t.runOps(r.g, seg(231, 'Sheer Cold').ops, { self: r.me, opp: r.op, oppPos: 'I00', selfPos: 'I01' }); ok(r.op.loc !== 'removed' && r.op.loc !== 'field', 'Sheer Cold only KOs a clean opponent');
+  ok(seg(118, 'Dragon Tail').ops.some(o => o.op === 'wait'), 'Dragon Tail makes the benched opponent wait');
+}
 console.log(`ability tests: ${pass} passed, ${fail} failed`);
 
 // optional battle: skipping ends the turn without a fight; the battle ends the turn
@@ -411,4 +429,5 @@ console.log(`ability tests: ${pass} passed, ${fail} failed`);
   const A = Object.values(g.figs).find(f => f.owner === 0), D = Object.values(g.figs).find(f => f.owner === 1);
   place(g, A, 'I00'); place(g, D, 'I01'); E.apply(g, 0, { t: 'move', uid: A.uid, to: 'I00' });
   console.log(g.phase === 'battleChoice' ? 'ok  battle offered' : 'FAIL battle not offered');
-  const r = E.apply(g, 0, { t: 'battle', target: 'skip' }); console.log(!r.error && g.cur === 1 && D.loc === 'field' && A.loc === 'field' ? 'ok  skip ends turn, no fight' : 'FAIL skip: ' + JSON.stringify(r)); }
+  const r = E.apply(g, 0, { t: 'battle', target: 'skip' }); console.log(!r.error && g.cur === 0 && g.phase === 'main' && !g.moved && D.loc === 'field' && A.loc === 'field' ? 'ok  backing out of an in-place attack keeps the turn' : 'FAIL cancel: ' + JSON.stringify(r));
+  const lg = E.legal(g); const mv = Object.keys(lg.moves).find(u => +u === A.uid && lg.moves[u].some(t => t !== 'I00')); if (mv) { const to = lg.moves[mv].find(t => t !== 'I00'); E.apply(g, 0, { t: 'move', uid: A.uid, to }); console.log(g.cur === 1 || g.phase === 'battleChoice' ? 'ok  a real move still uses the turn' : 'FAIL real move'); } }

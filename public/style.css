@@ -544,3 +544,16 @@ button{border-radius:10px}
 @keyframes czShake{10%,50%,90%{transform:translate(-6px,2px) rotate(-.6deg)}30%,70%{transform:translate(6px,-2px) rotate(.6deg)}}
 .czring{animation:czRing .9s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
 @keyframes czRing{0%{opacity:1;transform:scale(.8)}100%{opacity:0;transform:scale(1.6)}}
+
+/* reward wheel (regions) */
+.rwheel{position:relative;width:150px;height:170px;margin:8px auto}
+.rwptr{position:absolute;top:-4px;left:50%;transform:translateX(-50%);font-size:22px;color:#ffe9a6;z-index:2;text-shadow:0 1px 3px #000}
+.rwdisc{position:absolute;top:20px;left:0;width:150px;height:150px;border-radius:50%;background:conic-gradient(#2f7bff 0 180deg,#e8453c 180deg 360deg);border:4px solid #ffe9a6;box-shadow:0 0 18px #0008;animation:rwspin 3.2s cubic-bezier(.12,.7,.12,1) forwards;transform:rotate(0)}
+.rwl{position:absolute;top:50%;font-size:30px;transform:translateY(-50%)}.rwb{right:18px}.rwr{left:18px}
+.rwkey{position:absolute;bottom:-2px;width:100%;text-align:center;font-size:11px;color:#ffe9a6aa}
+@keyframes rwspin{to{transform:rotate(var(--end))}}
+.rwlater{opacity:0;animation:rwfade .5s 3.3s forwards;font-weight:600}
+@keyframes rwfade{to{opacity:1}}
+.nextbtn{margin-top:10px;width:100%}
+
+.chmeta .tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}

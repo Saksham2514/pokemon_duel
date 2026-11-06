@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "test": "node test/sim.js",
-    "test:abilities": "node test/abilities.js"
+    "test:abilities": "node test/abilities.js",
+    "test:audit": "node test/audit.js",
+    "test:regions": "node test/regions.js",
+    "test:evolution": "node test/evolution.js && node test/evo_sim.js && node test/pvp_evo.js"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",

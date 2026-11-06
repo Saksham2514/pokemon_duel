@@ -6,11 +6,12 @@ const DB = require('./lib/db');
 const B = require('./lib/board'); const DR = require('./lib/draft'); const { botDeck, randomDeck, botAct, botSearch } = require('./lib/bot');
 
 const PORT = process.env.PORT || 3000;
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const PUB = path.join(__dirname, 'public');
 
 const figPayload = JSON.stringify({
   figures: LIST.map(f => ({ id: f.id, name: f.name, rarity: f.rarity, mp: f.mp, cost: f.cost, types: f.types, ability: f.ability, abilityName: f.abilityName, picture: f.picture, active: Object.keys(f.flags).concat([...new Set(f.rules.map(r => r.k))]), segs: f.segs.map(s => ({ n: s.name, c: s.color, s: s.size, d: s.dmg, t: s.notes, ok: s.simulated })), z: f.zsegs.map(s => ({ n: s.name, c: s.color, s: s.size, d: s.dmg, t: s.notes, ok: s.simulated })) })),
+  evo: { next: require('./lib/evolution').NEXT },
   plates: PLATES, board: { points: B.POINTS, xy: B.XY, adj: B.ADJ, entry: B.ENTRY, goals: B.GOALS },
 });
 
@@ -101,7 +102,7 @@ function botMaybe(room) {
   const s = room.seats[g.cur]; if (!s || !s.bot) return;
   setTimeout(() => {
     if (g.over || room.game !== g || g.cur !== room.seats.indexOf(s)) return;
-    let a; try { a = botSearch(g, g.cur, Math.random, s.skill, 120 + 200 * (s.skill || 0)); } catch (e) { a = botAct(g, g.cur, Math.random, s.skill); } if (!a) return;
+    let a; try { a = botSearch(g, g.cur, Math.random, s.skill, 120 + 200 * (s.skill || 0) + ((s.skill || 0) >= 0.8 ? 700 * ((s.skill - 0.8) / 0.19) : 0)); } catch (e) { a = botAct(g, g.cur, Math.random, s.skill); } if (!a) return;
     const r = doAct(room, g.cur, a); if (r && r.error) { /* fall back to first legal move */ const L = E.legal(g); const uid = Object.keys(L.moves)[0]; if (uid) doAct(room, g.cur, { t: 'move', uid: +uid, to: L.moves[uid][0] }); }
   }, 900);
 }
@@ -121,7 +122,7 @@ setInterval(() => {
 function checkOwned(authTok, deck) {
   const user = DB.who(authTok); if (!user) return { error: 'Collection PvP needs you to be signed in (open the Campaign tab and sign in).' };
   const sv = DB.getSave(user); if (!sv || !sv.owned) return { error: 'No campaign collection found for this account yet.' };
-  const need = {}; for (const id of (deck && deck.figs) || []) need[id] = (need[id] || 0) + 1;
+  const need = {}; for (const id of [...((deck && deck.figs) || []), ...(((deck && deck.evo) || []).flat()), ...(((deck && deck.mega) || []).filter(Boolean))]) need[id] = (need[id] || 0) + 1;
   for (const id in need) if ((+sv.owned[id] || 0) < need[id]) return { error: 'You do not own enough copies of ' + ((FIGS[id] && FIGS[id].name) || ('#' + id)) + '.' };
   const seen = new Set(); for (const k of (deck && deck.plates) || []) { if (!sv.plates || !sv.plates[k] || seen.has(k)) return { error: 'You do not own the plate ' + ((PLATES[k] && PLATES[k].name) || k) + '.' }; seen.add(k); }
   return { user };
@@ -157,6 +158,7 @@ wss.on('connection', ws => {
     if (m.t === 'cancelq') { const r = c.room; if (r && r.open && !r.game) { clearTimeout(r.qTimer); r.open = false; rooms.delete(r.code); c.room = null; } return; }
     if (m.t === 'create' || m.t === 'bot') {
       const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });
+      if (m.t === 'bot' && m.boss && Array.isArray(m.boss.allow) && m.boss.allow.length && m.deck && Array.isArray(m.deck.figs) && m.deck.figs.some(i => !(FIGS[i] && FIGS[i].types.some(t => m.boss.allow.includes(t))))) return send(ws, { t: 'err', msg: 'This region only allows ' + m.boss.allow.join(' / ') + ' types.' }); // region type restriction is enforced server-side too
       let own = null; if (m.owned && m.t === 'create') { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
       const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : m.name, m.deck), null], game: null }; if (own) { room.owned = true; room.seats[0].user = own.user; }
       rooms.set(code, room); c.room = room; c.seat = 0;
@@ -181,12 +183,13 @@ wss.on('connection', ws => {
       const r = doAct(room, c.seat, m.a); if (r && r.error) send(ws, { t: 'err', msg: r.error });
     } else if (m.t === 'rematch') {
       const room = c.room; if (!room || !room.seats[0] || !room.seats[1]) return; const s = room.seats[c.seat];
-      let deck = m.random && !room.owned ? randomDeck(Math.random) : (m.deck && !E.validateDeck(m.deck) && (!room.owned || !checkOwned(m.auth, m.deck).error) ? m.deck : s.deck); s.nextDeck = deck;
+      const fixedMode = !!(room.draft || room.random || room.crazy); // queue modes keep their own team: the client's builder deck is not what was played
+      let deck = m.random && !room.owned ? randomDeck(Math.random) : fixedMode ? s.deck : (m.deck && !E.validateDeck(m.deck) && (!room.owned || !checkOwned(m.auth, m.deck).error) ? m.deck : s.deck); s.nextDeck = deck;
       const humans = room.seats.filter(x => !x.bot);
       if (humans.length === 1) { room.seats.forEach(x => { if (x.bot) x.nextDeck = room.boss ? room.boss.deck : randomDeck(Math.random); }); }
       s.wantRematch = true;
       if (room.seats.every(x => x.bot || x.wantRematch)) {
-        room.seats.forEach(x => { if (x.nextDeck) x.deck = x.nextDeck; x.nextDeck = null; x.wantRematch = false; }); room.over = false; room.pvpDone = false; room.cleanAt = 0; room.paused = false; if (room.campUser) { room.campDone = false; try { DB.setResult(room.campUser, { win: false, stage: room.campStage, fee: room.campFee, pending: true }); } catch (e) { } } startGame(room);
+        room.seats.forEach(x => { if (x.nextDeck) x.deck = x.nextDeck; x.nextDeck = null; x.wantRematch = false; }); room.over = false; room.pvpDone = false; room.cleanAt = 0; room.paused = false; if (room.campUser) { room.campDone = false; try { DB.setResult(room.campUser, { win: false, stage: room.campStage, fee: room.campFee, pending: true }); } catch (e) { } } if (room.draft) { room.game = null; startDraft(room); } else startGame(room);
       } else room.seats.forEach(x => x.ws && x !== s && send(x.ws, { t: 'chat', from: 'System', text: s.name + ' wants a rematch' + (m.random ? ' with random teams' : '') + '. Press Rematch to accept.' }));
     } else if (m.t === 'vis') {
       const room = c.room; if (room) room.paused = !!m.hidden; // bot rooms: pause clock while the tab is hidden
