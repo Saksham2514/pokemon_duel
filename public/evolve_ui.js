@@ -8,7 +8,8 @@ window.EvoUI = (function () {
   // Every Mega form has its own plate (PL[key].mega === the Mega's name). The plate is equipped automatically with the Mega and costs no plate points.
   const plateKeyFor = id => { const f = FIG[id]; if (!f) return null; const n = sp(f.name); return Object.keys(PL).find(k => PL[k].need === 'mega' && PL[k].mega === n) || null; };
   let owns = null;   // campaign sets this: key -> do you own that plate?
-  function norm(d) { d.evo = d.evo || []; d.mega = d.mega || []; d.plates = d.plates || []; for (let i = 0; i < 6; i++) { d.evo[i] = d.evo[i] || []; d.mega[i] = d.mega[i] || 0; } d.evo.length = 6; d.mega.length = 6;
+  function norm(d) { for (let i = (d.figs || []).length - 1; i >= 0; i--) if (FIG[d.figs[i]] && isMega(FIG[d.figs[i]].name)) { d.figs.splice(i, 1); if (d.evo) d.evo.splice(i, 1); if (d.mega) d.mega.splice(i, 1); }
+    d.evo = d.evo || []; d.mega = d.mega || []; d.plates = d.plates || []; for (let i = 0; i < 6; i++) { d.evo[i] = d.evo[i] || []; d.mega[i] = d.mega[i] || 0; } d.evo.length = 6; d.mega.length = 6;
     d.plates = d.plates.filter(k => PL[k]);
     for (let i = 0; i < 6; i++) { if (!d.mega[i]) continue; const k = plateKeyFor(d.mega[i]); if (!k || (owns && !owns(k))) d.mega[i] = 0; }
     const want = d.mega.filter(Boolean).map(plateKeyFor); d.plates = d.plates.filter(k => PL[k].need !== 'mega' || want.includes(k)); want.forEach(k => { if (!d.plates.includes(k)) d.plates.push(k); }); return d; }
@@ -36,5 +37,15 @@ window.EvoUI = (function () {
     if (mo.length) w.append(el('button', { class: 'xbtn mega', title: 'Equips this Mega form\'s own plate (free, no plate points). In the campaign you must own the plate.', onclick: e => { e.stopPropagation(); pick('Mega form for ' + FIG[id].name, mo, p => { d.mega[i] = p; onChange(); }); } }, '＋ Mega'));
     return w;
   }
-  return { setOwns: f => { owns = f; }, plateKeyFor, norm, removeSlot, clear, extras, extraIds, canEvo, canMega, isMega };
+  // Random team button: give every slot a random evolution chain (up to 2 stages) and, sometimes, a Mega with its own plate.
+  function randomize(d, withMega) {
+    d.evo = []; d.mega = [];
+    for (let i = 0; i < d.figs.length; i++) { const chain = []; let cur = FIG[d.figs[i]];
+      for (let k = 0; k < 2; k++) { const o = DATA.figures.filter(f => canEvo(cur.name, f.name) && /^Shiny /.test(f.name) === /^Shiny /.test(cur.name)); if (!o.length) break; cur = o[(Math.random() * o.length) | 0]; chain.push(cur.id); }
+      d.evo.push(chain); let m = 0;
+      if (withMega) { const names = [FIG[d.figs[i]].name, ...chain.map(id => FIG[id].name)]; const ms = DATA.figures.filter(f => names.some(n => canMega(n, f.name)) && plateKeyFor(f.id) && (!owns || owns(plateKeyFor(f.id)))); if (ms.length) m = ms[(Math.random() * ms.length) | 0].id; }
+      d.mega.push(m); }
+    return norm(d);
+  }
+  return { randomize, setOwns: f => { owns = f; }, plateKeyFor, norm, removeSlot, clear, extras, extraIds, canEvo, canMega, isMega };
 })();

@@ -6,7 +6,7 @@ const N = +process.argv[2] || 300; const onlyNew = process.argv[3] === 'new';
 const special = LIST.filter(f => f.segs.some(s => s.ops && s.ops.some(o => ['spinSel', 'resetOpp', 'assist', 'warpHole', 'imprison', 'chargeMark', 'finalSong', 'ultraEnter', 'pancake', 'trickRoom', 'wishKoko', 'wishLele', 'wishBulu', 'wishFini', 'blueHole', 'magicCoat', 'fullMark', 'lunarDance', 'pickFx', 'plateBurn', 'rotateWheel', 'cosmic', 'lariat', 'throwAdj', 'swapOppAdj'].includes(o.op))));
 global.__opCount = {}; let errs = 0, done = 0, fin = 0; const ops = {};
 for (let i = 0; i < N; i++) {
-  const r = mulberry(i + 1); const mk = () => { const ids = []; const pool = onlyNew ? special : LIST.filter(f => f.mp >= 1); while (ids.length < 6) { const f = pool[(r() * pool.length) | 0]; if (!ids.includes(f.id)) ids.push(f.id); } const keys = Object.keys(PLATES).sort(() => r() - 0.5); const pl = []; let c = 0; for (const k of keys) if (c + PLATES[k].cost <= 6) { pl.push(k); c += PLATES[k].cost; } return { figs: ids, plates: pl }; };
+  const r = mulberry(i + 1); const mk = () => { const ids = []; const pool = onlyNew ? special : LIST.filter(f => f.mp >= 1 && !/^(Shiny )?(Mega|Primal) /.test(f.name)); while (ids.length < 6) { const f = pool[(r() * pool.length) | 0]; if (!ids.includes(f.id)) ids.push(f.id); } const keys = Object.keys(PLATES).sort(() => r() - 0.5); const pl = []; let c = 0; for (const k of keys) if (c + PLATES[k].cost <= 6) { pl.push(k); c += PLATES[k].cost; } return { figs: ids, plates: pl }; };
   const dk = [mk(), mk()]; if (E.validateDeck(dk[0]) || E.validateDeck(dk[1])) { i--; continue; }
   try {
     const g = E.newGame(dk, ['A', 'B'], i + 77, { bots: [true, true], crazy: !!process.env.CRAZY }); let guard = 0;

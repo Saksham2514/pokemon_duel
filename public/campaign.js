@@ -31,7 +31,7 @@
   let S = null, cur = null, openCh = null, openRg = null, tab = 'battle', fil = { q: '', r: '' }, editDeck = 0, stock = null, done = false, shake = null, mem = null;
   const $c = id => document.getElementById(id);
   const rngSeed = a => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-  const baseName = f => f.name.replace(/^(Mega|Alolan|Galarian|Hisuian|Primal|Origin|Therian|Incarnate)\s+/i, '').split(/[ (]/)[0];
+  const baseName = f => f.name.replace(/^(?:(?:Shiny|Mega|Alolan|Galarian|Hisuian|Primal|Origin|Therian|Incarnate)\s+)+/i, '').split(/[ (]/)[0];
   const tierIdx = () => { let t = 0; for (const b of BOSSES) if (S.beaten[b.id] && b.unlock) t = Math.max(t, RAR.indexOf(b.unlock)); return t; };
   const byRar = r => DATA.figures.filter(f => f.rarity === r);
 
@@ -108,10 +108,10 @@
   }
   function bossDeck(b) {
     if (b._deck) return b._deck;
-    const rng = rngSeed(String(b.id).split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7)); const okT = f => !b.allow || !b.allow.length || f.types.some(t => b.allow.includes(t)); let pool = DATA.figures.filter(f => b.rar.includes(f.rarity) && f.mp >= 1 && okT(f));
-    if (b.allow && b.allow.length && new Set(pool.map(baseName)).size < 14) pool = DATA.figures.filter(f => RAR.indexOf(f.rarity) <= Math.max(...b.rar.map(r => RAR.indexOf(r))) && f.mp >= 1 && okT(f)); // small type pools: widen the rarity range
+    const rng = rngSeed(String(b.id).split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7)); const okT = f => !b.allow || !b.allow.length || f.types.some(t => b.allow.includes(t)); let pool = DATA.figures.filter(f => b.rar.includes(f.rarity) && f.mp >= 1 && okT(f) && !EvoUI.isMega(f.name));
+    if (b.allow && b.allow.length && new Set(pool.map(baseName)).size < 14) pool = DATA.figures.filter(f => RAR.indexOf(f.rarity) <= Math.max(...b.rar.map(r => RAR.indexOf(r))) && f.mp >= 1 && okT(f) && !EvoUI.isMega(f.name)); // small type pools: widen the rarity range
     const maxR = Math.min(4, Math.max(...b.rar.map(r => RAR.indexOf(r))) + 1); const aceKey = (b.ace || '').toLowerCase();
-    const aces = aceKey ? DATA.figures.filter(f => RAR.indexOf(f.rarity) <= maxR && f.mp >= 1 && okT(f) && (f.name.toLowerCase() === aceKey || f.name.toLowerCase().replace(/^(mega|shiny|alolan|galarian|hisuian|primal)\s+/, '').startsWith(aceKey))).sort((x, y) => RAR.indexOf(y.rarity) - RAR.indexOf(x.rarity)) : [];
+    const aces = aceKey ? DATA.figures.filter(f => RAR.indexOf(f.rarity) <= maxR && f.mp >= 1 && okT(f) && !EvoUI.isMega(f.name) && (f.name.toLowerCase() === aceKey || f.name.toLowerCase().replace(/^(mega|shiny|alolan|galarian|hisuian|primal)\s+/, '').startsWith(aceKey))).sort((x, y) => RAR.indexOf(y.rarity) - RAR.indexOf(x.rarity)) : [];
     const themed = pool.filter(f => f.types.some(t => b.types.includes(t))); const ids = []; const used = {};
     if (aces.length) { ids.push(aces[0].id); used[baseName(aces[0])] = 1; }
     const take = list => { if (b.skill > 0.45) list = list.slice().sort((x, y) => y.mp - x.mp); let g = 0; while (list.length && ids.length < 6 && g++ < 400) { const f = list[Math.floor((b.skill > 0.45 ? rng() * rng() : rng()) * list.length)]; const nm = baseName(f); if (used[nm]) continue; used[nm] = 1; ids.push(f.id); } };
@@ -128,6 +128,7 @@
   const deckOk = d => d && d.figs.length === 6 && deckIds(d).every(i => S.owned[i]) && (() => { const need = {}; deckIds(d).forEach(i => (need[i] = (need[i] || 0) + 1)); return Object.keys(need).every(i => need[i] <= S.owned[i]); })();
   const plateCost = d => d.plates.reduce((a, k) => a + PL[k].cost, 0);
   function canAdd(d, id) {
+    if (fig(id) && EvoUI.isMega(fig(id).name)) return false;   // Megas are added through their base form (💎 button)
     if (d.figs.length >= 6 || !S.owned[id]) return false;
     if (deckIds(d).filter(x => x === id).length >= S.owned[id]) return false;
     return d.figs.filter(x => baseName(fig(x)) === baseName(fig(id))).length < 3;
@@ -339,7 +340,7 @@
       const odds = {}; RAR.forEach(r => (odds[r] = 0)); RAR.forEach((r, i) => (odds[RAR[Math.min(i, t)]] += c.odds[r]));
       chests.append(el('div', { class: 'chest', style: '--cc:' + c.col }, el('div', { class: 'cicon' }, c.icon), el('b', {}, c.name),
         el('div', { class: 'small muted' }, RAR.filter(r => odds[r] > 0).map(r => `${r} ${odds[r]}%`).join(' · ')),
-        el('button', { class: 'primary', disabled: S.coins >= priceOf(c) ? null : '', onclick: () => openChest(c) }, `Open · 🪙${priceOf(c)}` + (c.esc && priceOf(c) > c.price ? ' ▲' : '')), (S.free[c.id] > 0) ? el('button', { class: 'buy', onclick: () => openChest(c, true) }, `Open FREE ×${S.free[c.id]}`) : ''));
+        el('button', { class: 'primary', disabled: S.coins >= priceOf(c) ? null : '', onclick: () => openChest(c) }, `Open · 🪙${priceOf(c)}` + (c.esc && priceOf(c) > c.price ? ' ▲' : '')), (S.free[c.id] > 0) ? el('button', { class: 'buy', onclick: () => openChest(c, true) }, `Open FREE ×${S.free[c.id]}`) : '', (S.free[c.id] > 1) ? el('button', { class: 'buy', onclick: () => openAllFree(c) }, `Open ALL ${S.free[c.id]} free`) : ''));
     });
     chests.querySelectorAll('button').forEach(b => { if (b.getAttribute('disabled') === null) b.removeAttribute('disabled'); });
     const st = el('div', { class: 'figgrid' });
@@ -400,6 +401,25 @@
   }
   const DAY = 24 * 3600e3;
   const priceOf = c => { if (!c.esc) return c.price; const b = (S.buys || {})[c.id]; const n = b && Date.now() - b.at < DAY ? b.n : 0; return Math.round(c.price * (1 + c.esc * n) / 10) * 10; };
+  // Open every free chest of this kind at once and show one combined summary.
+  function openAllFree(c) {
+    const n = S.free[c.id] || 0; if (n <= 0) return; if (n === 1) return openChest(c, true);
+    const res = [];
+    for (let i = 0; i < n; i++) {
+      S.free[c.id]--; S.stats.chests++;
+      const platePl = Math.random() < (c.platePct != null ? c.platePct : c.id === 'gold' ? 0.4 : c.id === 'silver' ? 0.25 : 0.12) ? plateDrop([], 'chest') : null;
+      const f = rollFig(c.odds, null, !!c.gem); const dup = !!S.owned[f.id]; S.owned[f.id] = (S.owned[f.id] || 0) + 1; res.push({ f, dup, platePl });
+    }
+    save();
+    const ov = el('div', { class: 'overlay chestov' }); const box = el('div', { class: 'chestbox storybox', style: '--cc:' + c.col + ';max-width:760px' }, el('div', { class: 'bigchest shake' }, c.icon), el('div', { class: 'muted' }, 'Opening ' + n + ' chests…'));
+    ov.append(box); document.body.append(ov);
+    setTimeout(() => {
+      box.innerHTML = ''; const nw = res.filter(r => !r.dup).length, plates = res.filter(r => r.platePl);
+      const grid = el('div', { class: 'figgrid', style: 'max-height:55vh;overflow:auto' });
+      res.forEach(r => grid.append(el('div', { class: 'fig', style: 'outline:2px solid ' + RCOL[r.f.rarity], title: r.f.name }, img(r.f), el('span', { class: 'mp' }, r.f.mp), el('div', { class: 'nm' }, r.f.name), el('div', { class: 'small', style: 'color:' + RCOL[r.f.rarity] }, RNAME[r.f.rarity] + (r.dup ? ' · dup' : ' · NEW!')))));
+      box.append(el('h3', {}, c.icon + ' ' + n + ' × ' + c.name + ' opened'), el('div', { class: 'muted' }, nw + ' new Pokémon · ' + (n - nw) + ' duplicates' + (plates.length ? ' · 🔶 ' + plates.length + ' bonus plate' + (plates.length > 1 ? 's' : '') + ': ' + plates.map(r => PL[r.platePl].name).join(', ') : '')), grid, el('button', { class: 'primary', onclick: () => { ov.remove(); render(); } }, 'Awesome'));
+    }, 1400);
+  }
   function openChest(c, free) {
     if (free) { if (!(S.free[c.id] > 0)) return; S.free[c.id]--; } else if (c.gem) { if (S.gems < c.gem) return; S.gems -= c.gem; } else { const pr = priceOf(c); if (S.coins < pr) return; S.coins -= pr; if (c.esc) { S.buys = S.buys || {}; const b = S.buys[c.id]; S.buys[c.id] = { n: (b && Date.now() - b.at < DAY ? b.n : 0) + 1, at: Date.now() }; } } S.stats.chests++; const platePl = Math.random() < (c.platePct != null ? c.platePct : c.id === 'gold' ? 0.4 : c.id === 'silver' ? 0.25 : 0.12) ? plateDrop([], 'chest') : null; const f = rollFig(c.odds, null, !!c.gem); const dup = !!S.owned[f.id]; S.owned[f.id] = (S.owned[f.id] || 0) + 1; save();
     const ov = el('div', { class: 'overlay chestov' }); const box = el('div', { class: 'chestbox', style: '--cc:' + c.col }, el('div', { class: 'bigchest shake' }, c.icon), el('div', { class: 'muted' }, 'Opening…'));

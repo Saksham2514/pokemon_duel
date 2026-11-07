@@ -7,7 +7,8 @@ const COL = { White: '#f2f2f2', Red: '#e0453a', Blue: '#3a7be0', Purple: '#9b59d
 const CLS = { White: 'cW', Red: 'cR', Blue: 'cB', Purple: 'cP', Gold: 'cG' };
 const ST_ICON = { poisoned: '☠', noxious: '☠☠', paralyzed: '⚡', burned: '🔥', frozen: '❄', confused: '💫', asleep: '💤' };
 const ph = (name) => 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="#1b2742"/><text x="48" y="58" font-size="34" fill="#8fa0c4" text-anchor="middle" font-family="sans-serif">${(name || '?')[0]}</text></svg>`);
-const img = (f, cls) => { const i = el('img', { src: f.picture, alt: f.name, loading: 'lazy', class: cls || '' }); i.onerror = () => { i.onerror = null; i.src = ph(f.name); }; return i; };
+const inGame = () => { const g = document.getElementById('game'); return !!g && !g.classList.contains('hidden'); };
+const img = (f, cls) => { const i = el('img', { src: f.picture, alt: f.name, loading: inGame() ? 'eager' : 'lazy', decoding: 'sync', class: cls || '' }); i.onerror = () => { i.onerror = null; i.src = ph(f.name); }; return i; };
 
 let DATA = null, FIG = {}, PL = {}, BOARD = null;
 let ws = null, session = null, V = null, ui = { sel: null, info: null, plate: null, z: '' };
@@ -17,7 +18,7 @@ try { const d = JSON.parse(localStorage.getItem('duel_deck') || 'null'); if (d) 
 // ------------------------------------------------------------ boot
 fetch('/api/data').then(r => r.json()).then(d => { DATA = d; d.figures.forEach(f => (FIG[f.id] = f)); PL = d.plates; BOARD = d.board; deck.figs = deck.figs.filter(i => FIG[i]); deck.plates = deck.plates.filter(k => PL[k]); initUI(); if (window.Camp) Camp.init(); connect(); }).catch(e => { $('#conn').textContent = 'Failed to load data: ' + e; });
 
-function show(screen) { try { document.body.scrollTop = 0; document.documentElement.scrollTop = 0; } catch (e) { } if (screen === 'deck' && window.Camp && Camp.lobbyPanel) { try { Camp.lobbyPanel($('#lobbyOwn')); } catch (e) { } } for (const s of ['lobby', 'camp', 'deck', 'draft', 'game']) $('#' + s).classList.toggle('hidden', s !== screen); $('#btnMenu').classList.toggle('hidden', screen !== 'game' && screen !== 'draft'); $('#btnRestart').classList.toggle('hidden', screen !== 'game'); }
+function show(screen) { try { document.body.scrollTop = 0; document.documentElement.scrollTop = 0; } catch (e) { } if (screen === 'deck' && window.Camp && Camp.lobbyPanel) { try { Camp.lobbyPanel($('#lobbyOwn')); } catch (e) { } } for (const s of ['lobby', 'camp', 'deck', 'draft', 'game']) $('#' + s).classList.toggle('hidden', s !== screen); $('#btnMenu').classList.toggle('hidden', screen !== 'game' && screen !== 'draft'); $('#btnRestart').classList.toggle('hidden', screen !== 'game'); $('#btnHome').classList.toggle('hidden', screen === 'lobby' || screen === 'game' || screen === 'draft'); }
 function saveDeck() { try { localStorage.setItem('duel_deck', JSON.stringify(deck)); localStorage.setItem('duel_name', $('#name').value); } catch (e) { } }
 
 function connect() {
@@ -114,9 +115,10 @@ function initUI() {
   $('#btnInfoToggle').onclick = () => { if (window.matchMedia('(max-width:900px)').matches) { $('.sidebar').classList.add('open'); $('#drawer').open = true; return; } const d = $('#drawer'); d.open = !d.open; if (d.open) d.scrollIntoView({ behavior: 'smooth' }); };
   $('#btnCloseSide').onclick = () => $('.sidebar').classList.remove('open');
   
+  $('#btnHome').onclick = () => show('lobby'); $('.brand').style.cursor = 'pointer'; $('.brand').onclick = () => { if (!$('#lobby').classList.contains('hidden') || !$('#game').classList.contains('hidden') || !$('#draft').classList.contains('hidden')) return; show('lobby'); };
   $('#btnMenu').onclick = () => { if (!$('#draft').classList.contains('hidden')) { if (!confirm('Leave the draft?')) return; send({ t: 'leaveDraft' }); clearInterval(drTimerId); sessionStorage.removeItem('duel_session'); V = null; show('deck'); return; } if (V && !V.over && !confirm('Leave the duel? You will forfeit.')) return; if (V && !V.over) act({ t: 'resign' }); if (window.campFight || window.pvpMode) return Camp.leaveToCamp(); sessionStorage.removeItem('duel_session'); V = null; show('deck'); renderDeck(); };
   for (const id of ['fSearch', 'fRarity', 'fMp']) $('#' + id).oninput = renderGrid;
-  $('#rndTeam').onclick = () => { const L = DATA.figures; EvoUI.clear(deck); const nm = {}; while (deck.figs.length < 6) { const f = L[(Math.random() * L.length) | 0]; const b = f.name.split(' ').pop(); if ((nm[b] || 0) >= 2) continue; nm[b] = (nm[b] || 0) + 1; deck.figs.push(f.id); } deck.plates = []; for (const k of Object.keys(PL).sort(() => Math.random() - 0.5)) if (cost() + PL[k].cost <= 6) deck.plates.push(k); renderDeck(); };
+  $('#rndTeam').onclick = () => { const L = DATA.figures.filter(f => !EvoUI.isMega(f.name)); EvoUI.clear(deck); const nm = {}; while (deck.figs.length < 6) { const f = L[(Math.random() * L.length) | 0]; const b = f.name.split(' ').pop(); if ((nm[b] || 0) >= 2) continue; nm[b] = (nm[b] || 0) + 1; deck.figs.push(f.id); } deck.plates = []; for (const k of Object.keys(PL).sort(() => Math.random() - 0.5)) if (!PL[k].need && cost() + PL[k].cost <= 6) deck.plates.push(k); EvoUI.randomize(deck, Math.random() < 0.6); renderDeck(); };
   $('#clrTeam').onclick = () => { EvoUI.clear(deck); deck.plates = []; renderDeck(); };
   $('#btnBot').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'bot', name: $('#name').value, deck }); };
   $('#goQuick').onclick = () => { show('deck'); if (deck.figs.length === 6) $('#btnQuick').click(); else toast('Build a team of 6 first, then press Quick match.'); };
@@ -152,6 +154,7 @@ function renderGrid() {
   const q = $('#fSearch').value.toLowerCase(), r = $('#fRarity').value, mp = $('#fMp').value; const g = $('#figGrid'); g.innerHTML = '';
   let n = 0;
   for (const f of DATA.figures) {
+    if (EvoUI.isMega(f.name)) continue;
     if (q && !(f.name.toLowerCase().includes(q) || f.types.join(' ').includes(q))) continue;
     if (r && f.rarity !== r) continue; if (mp !== '' && f.mp !== +mp) continue; if (++n > 240) break;
     const c = el('div', { class: 'fig' + (deck.figs.includes(f.id) ? ' picked' : ''), onclick: () => { if (deck.figs.length < 6) { deck.figs.push(f.id); renderDeck(); } }, onmouseenter: () => infoCard($('#infoCard'), f) }, img(f), el('span', { class: 'mp' }, f.mp), el('span', { class: 'r' }, f.rarity), f.name);
@@ -247,9 +250,16 @@ function plateAnim(ev) {
       el('div', { class: 'pa-txt' }, Pp.text), el('div', { class: 'pa-note' }, 'Plates are one-use per duel and are played before moving.')));
   SFX.play('plate'); document.body.append(box); setTimeout(() => box.classList.add('out'), 3600); setTimeout(() => box.remove(), 4200);
 }
+// Keep decoded bitmaps of every Pokémon in play so redrawing the board never shows a blank frame.
+const imgCache = new Map();
+function preloadFigs() { for (const f of V.figs) { const d = FIG[f.fid]; if (d && d.picture && !imgCache.has(d.picture)) { const i = new Image(); i.decoding = 'async'; i.src = d.picture; imgCache.set(d.picture, i); if (i.decode) i.decode().catch(() => {}); } } }
+// Looping CSS animations restart whenever their element is rebuilt; start them at the phase they would be at had they never been rebuilt.
+const LOOPS = [['.dest', 1200], ['#hud .hs.on', 2000], ['#hud .hs.on .hav', 1400], ['.evobtn', 1400], ['.gauge.full i', 1000]];
+function syncLoops() { const t = performance.now(); for (const [sel, per] of LOOPS) document.querySelectorAll(sel).forEach(e => { e.style.animationDelay = '-' + (t % per).toFixed(0) + 'ms'; }); }
 function render() {
   if (!V || !BOARD) return;
-  if (!V.over && lastCurSeen !== V.turn + ':' + V.cur) { const first = lastCurSeen === null; lastCurSeen = V.turn + ':' + V.cur; if (V.cur === V.seat && (V.turn > 1 || V.cur === V.seat)) SFX.play('turn'); if (!first && !introOn) turnFlash(V.cur === V.seat); }
+  preloadFigs();
+  if (!V.over && lastCurSeen !== V.turn + ':' + V.cur) { const first = lastCurSeen === null; lastCurSeen = V.turn + ':' + V.cur; if (V.cur === V.seat && (V.turn > 1 || V.cur === V.seat)) SFX.play('turn'); if (!first && !introOn) turnFlashWhenIdle(V.turn + ':' + V.cur); }
   if (introPending) { introPending = false; if (V.turn <= 1) vsIntro(); }
   if (V.plateEv) { if (lastPlateN !== null && V.plateEv.n !== lastPlateN) plateAnim(V.plateEv); lastPlateN = V.plateEv.n; } else if (lastPlateN === null) lastPlateN = 0;
   const me = V.seat, opp = 1 - me, mine = V.cur === me && !V.over;
@@ -263,7 +273,7 @@ function render() {
   { const cb = $('#crazyBar'); if (cb) { if (V.crazy && !V.over) { const left = Math.max(0, V.crazy.next - V.turn); cb.classList.remove('hidden'); cb.textContent = '🌀 Crazy Mode · ' + (V.crazy.last ? V.crazy.last.text + ' · ' : '') + (left > 0 ? 'next change in ~' + left + ' turn' + (left > 1 ? 's' : '') : 'a change is coming!'); } else cb.classList.add('hidden'); } }
   $('#topinfo').textContent = session ? 'Room ' + session.code : '';
   drawHud(me, opp);
-  drawBoard(); crazyAnnounce(); evoAnnounce(); drawCrazyRings(); drawFightPrompt(mine); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null);
+  drawBoard(); crazyAnnounce(); evoAnnounce(); drawCrazyRings(); drawFightPrompt(mine); drawActions(); infoCard($('#info'), ui.info ? FIG[ui.info] : null); syncLoops();
   const L = $('#log'); L.innerHTML = ''; V.log.forEach(e => L.append(el('div', {}, e.msg))); L.scrollTop = L.scrollHeight;
   if (V.over) showEnd();
 }
@@ -644,6 +654,18 @@ document.addEventListener('visibilitychange', () => { if (session && session.bot
   document.addEventListener('keydown', e => { if (/input|textarea/i.test((e.target || {}).tagName || '')) return; if (e.key === 'm' || e.key === 'M') { SFX.toggle(); upd(); } if (e.key === 'Escape' && typeof V !== 'undefined' && V) { ui.sel = null; ui.plate = null; clearPreview(); render(); } }); })();
 
 // ---- match presentation: VS intro splash and turn flash
+// Wait until piece movement, battle and KO animations are finished before announcing the new turn.
+let flashTok = null;
+function turnFlashWhenIdle(tok) {
+  flashTok = tok; const t0 = Date.now();
+  const wait = () => {
+    if (flashTok !== tok) return; if (!V || V.over) return;
+    const now = performance.now(); const busy = animating || stateQ.length || Object.values(activeAnim).some(a => now - a.start < a.dur) || ghosts.some(x => now - x.start < x.dur) || document.querySelector('.evofx');
+    if (busy && Date.now() - t0 < 6000) return void setTimeout(wait, 120);
+    setTimeout(() => { if (flashTok === tok && V && !V.over && V.turn + ':' + V.cur === tok) turnFlash(V.cur === V.seat); }, 250);
+  };
+  setTimeout(wait, 80);   // render() plans its animations after this call, so look again shortly
+}
 function turnFlash(mine) {
   document.querySelectorAll('.turnflash').forEach(e => e.remove());
   const o = el('div', { class: 'turnflash ' + (mine ? 'mine' : 'theirs') }, el('span', {}, mine ? 'YOUR TURN' : ((V.players[V.cur].name || 'Opponent') + "'s turn").toUpperCase()));

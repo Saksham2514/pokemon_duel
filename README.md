@@ -179,6 +179,36 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.88 — Species-limit bug
+
+- **Fixed:** the "max 3 of the same Pokémon" check treated every "Shiny …" figure as the same species ("Shiny"), so a deck with 4+ different Shinies was rejected (and "Shiny Mega X" counted as "Mega"). Prefixes (Shiny / Mega / Alolan / …) are now all stripped, so Shiny Gengar and Gengar count as one species and different Shinies no longer collide. Applied to the engine, draft, bot and campaign deck checks.
+- 1 new regression check (test/abilities.js now 167). Full suite re-run: all green.
+
+## v10.87 — Flicker fixes
+
+- Every redraw rebuilds the board/HUD, which restarted all looping CSS animations (move-highlight glow, active-player avatar pulse, Evolve button, full gauge) from frame 0 → visible flicker. They are now re-synced to their original phase after each redraw (checked in browser: pulse phase stays continuous across redraws).
+- In-game Pokémon images are loaded eagerly with synchronous decoding (no lazy-load blank frame when portraits are rebuilt) and every Pokémon in play is pre-decoded into a cache.
+
+## v10.86 — Open all free chests
+
+- Shop & Chests: when you have 2+ free chests of a kind there is a new **Open ALL n free** button. It opens them all at once and shows one summary (new vs duplicate Pokémon, bonus plates). Single "Open FREE" still works. Counts toward the chest quest stats.
+- test/fuzz.js: roster pool no longer includes Megas (they are rejected as roster slots since v10.85, which made the fuzzer retry forever).
+
+## v10.85 — Mega Aerodactyl wheel; Megas only via Mega Evolution
+
+- **Mega Aerodactyl** wheel fixed: Miss 4 · Rock Slide 32 · Stone Edge 32 · **Taunt 28 (☆☆☆)** = 96. Taunt had no size/stars and its text variant wasn't recognised, so it did nothing; it now applies (until the end of your next turn). Parser fix also covers other Taunt wordings.
+- **A Mega can no longer be a roster slot.** Put the base form (e.g. Aerodactyl) in the slot, add the Mega with the 💎 button; it comes in via its plate, for 7 turns. `validateDeck` rejects Megas/Primals in `figs`; random, quick, draft, bot and campaign-boss decks no longer pick them; the free-play and campaign pickers hide them; old saved decks with a Mega in a slot have that slot removed when loaded (re-pick the base form).
+- 3 new checks (test/abilities.js now 166).
+
+## v10.84 — Turn banner timing
+
+- The YOUR TURN / opponent's turn banner appeared while pieces were still moving or the battle/KO animation was playing. It now waits until movement, battle, KO and evolution animations have finished (max 6 s), then shows.
+
+## v10.83 — Home button, random team evolutions
+
+- New **🏠 Home** button in the header on Free Play, Campaign and the other menu screens (the brand logo also goes home). In a match or draft the existing **Leave** button is used.
+- The Free Play **Random team** button now also assigns random evolution chains and, 60% of the time, Megas with their own plates (Mega plates don't use plate points). Quick/Random/Draft/bot matches already did this on the server.
+
 ## v10.82 — Aura Sphere choice
 
 - "Either the battle opponent or a Pokémon behind it in a straight line is knocked out" (Aura Sphere: Lucario, Mega Lucario, Dialga, Palkia) was always KO'ing the opponent. **The attacking player now chooses**; if no enemy stands behind, the opponent is KO'd with no prompt. Bots pick the higher-MP target.

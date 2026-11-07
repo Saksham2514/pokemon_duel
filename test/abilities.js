@@ -457,6 +457,16 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
     T.resolveTasks(gg); E.apply(gg, 0, { t: 'choose', to: Y.uid }); ok(Y.loc !== 'field' && D.loc === 'field', 'the attacker can choose the Pokémon behind'); }
   { const { gg, pl2, A, D, Y } = mk(); pl2(A, 'I00'); pl2(D, BB.ADJ['I00'][0]); Y.loc = 'pc'; gg.cur = 0; gg.phase = 'main'; T.runOps(gg, [{ op: 'koOppOrBehind' }], { self: A, opp: D }); T.resolveTasks(gg);
     ok(D.loc !== 'field' && gg.phase !== 'choose', 'with nobody behind, the battle opponent is simply knocked out'); } }
+// Mega Aerodactyl wheel sums to 96 with a working Taunt; Megas cannot be roster slots
+{ const F2 = require('../lib/figures'); const m = F2.LIST.find(x => x.id === 538);
+  ok(m.segs.reduce((a, x) => a + x.size, 0) === 96 && m.segs.find(x => x.name === 'Taunt').size === 28 && m.segs.find(x => x.name === 'Taunt').ops.some(o => o.op === 'tauntMark'), 'Mega Aerodactyl: wheel 96 (Miss 4, Rock Slide 32, Stone Edge 32, Taunt 28 with effect)');
+  ok(/roster slot/.test(E.validateDeck({ figs: [538, 596, 596, 563, 563, 596], plates: [] }) || ''), 'a Mega cannot be placed directly in a roster slot');
+  const B2 = require('../lib/bot'); let bad = 0; for (let i = 0; i < 200; i++) { const d = B2.randomDeck(Math.random); if (d.figs.some(id => /^(Shiny )?(Mega|Primal) /.test(F2.FIGS[id].name))) bad++; } ok(bad === 0, 'random decks never put a Mega in a roster slot'); }
+// Species limit: "Shiny" must not count as one species (4+ different Shinies are legal); Shiny X and X are the same species
+{ const L3 = require('../lib/figures').LIST; const sh = L3.filter(f => /^Shiny /.test(f.name) && !/Mega|Primal/.test(f.name) && f.mp >= 1); const pick = []; const seen = new Set(); for (const f of sh) { const n = f.name.replace(/^Shiny /, ''); if (!seen.has(n)) { seen.add(n); pick.push(f.id); } if (pick.length === 6) break; }
+  ok(E.validateDeck({ figs: pick, plates: [] }) === null, 'a deck of 6 different Shiny Pokémon is valid');
+  const eev = L3.filter(f => /^(Shiny )?Eevee$/.test(f.name.replace(/ [A-Z]+$/, ''))); const rest = pick.filter(id => !/Eevee/.test(require('../lib/figures').FIGS[id].name)).slice(0, 2);
+  if (eev.length >= 4) ok(/Max 3/.test(E.validateDeck({ figs: [eev[0].id, eev[1].id, eev[2].id, eev[3].id, ...rest], plates: [] }) || ''), 'Shiny Eevee and Eevee count as one species (max 3)'); }
 console.log(`ability tests: ${pass} passed, ${fail} failed`);
 
 // optional battle: skipping ends the turn without a fight; the battle ends the turn
