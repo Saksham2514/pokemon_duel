@@ -179,6 +179,11 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.104 — Mini Arena board picker
+
+- **New:** a board selector next to the Mini Arena buttons (Free Play): *Standard 3×5* (13 points, the default), *Short 3×4* (10), *Wide 5×4* (18) and *Large 5×5* (23). All use 4 Pokémon per side. Players only match others who chose the same board; the Collection PvP buttons always use the standard Mini board.
+- Tests: mini_e2e 9 (different boards never match; the chosen board and 4 Pokémon per side reach both clients); all four boards render in a browser bot game.
+
 ## v10.103 — Mini Arena plays with 4 Pokémon; board comparison
 
 - **Changed:** Mini Arena (free play, bot, and Collection PvP) now uses only the **first 4 Pokémon** of your team (engine option `teamSize`; the other slots are ignored, plates unchanged).

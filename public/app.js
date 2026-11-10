@@ -128,8 +128,8 @@ function initUI() {
   $('#goQuick').onclick = () => { show('deck'); if (deck.figs.length === 6) $('#btnQuick').click(); else toast('Build a team of 6 first, then press Quick match.'); };
   $('#btnDraft').onclick = () => { window.pvpMode = false; send({ t: 'quick', draft: true, name: $('#name').value }); };
   $('#btnDraftBot').onclick = () => { window.pvpMode = false; send({ t: 'draftBot', name: $('#name').value }); };
-  if ($('#btnMini')) $('#btnMini').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', mini: true, deck, name: $('#name').value }); };
-  if ($('#btnMiniBot')) $('#btnMiniBot').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'bot', mini: true, deck, name: $('#name').value }); };
+  if ($('#btnMini')) $('#btnMini').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', mini: $('#miniBoard') ? $('#miniBoard').value : true, deck, name: $('#name').value }); };
+  if ($('#btnMiniBot')) $('#btnMiniBot').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'bot', mini: $('#miniBoard') ? $('#miniBoard').value : true, deck, name: $('#name').value }); };
   $('#btnCrazy').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', crazy: true, deck, name: $('#name').value }); };
   $('#btnCrazyDraft').onclick = () => { window.pvpMode = false; send({ t: 'quick', crazy: true, draft: true, name: $('#name').value }); };
   $('#btnRandQ').onclick = () => { window.pvpMode = false; send({ t: 'quick', random: true, name: $('#name').value }); };
@@ -288,7 +288,7 @@ function render() {
 function drawHud(me, opp) {
   let h = $('#hud'); if (!h) { h = el('div', { id: 'hud' }); $('.boardwrap').prepend(h); }
   const side = (i, cls) => { const p = V.players[i]; const won = V.players[1 - i].kos || 0; return el('div', { class: 'hs ' + cls + (V.cur === i && !V.over ? ' on' : '') }, el('div', { class: 'hav' }, (p.name || '?').trim().charAt(0).toUpperCase()), el('div', { class: 'hmid' }, el('div', { class: 'hn' }, p.name + (i === me ? ' (you)' : '')), el('div', { class: 'hko', title: 'Enemy Pokémon you have knocked out' }, '⚔ ', el('b', {}, String(won)), ' KO')), el('div', { class: 'hc' }, p.clock == null ? '–' : fmt(p.clock))); };
-  h.replaceChildren(side(me, 'me'), el('div', { class: 'hturn' }, el('small', {}, V.board === 'mini' ? 'MINI · TURN' : 'TURN'), el('b', {}, String(V.turn))), side(opp, 'opp'));
+  h.replaceChildren(side(me, 'me'), el('div', { class: 'hturn' }, el('small', {}, /^mini/.test(V.board || '') ? 'MINI · TURN' : 'TURN'), el('b', {}, String(V.turn))), side(opp, 'opp'));
 }
 function drawFightPrompt(mine) {
   let p = $('#fightPrompt'); if (p) p.remove();

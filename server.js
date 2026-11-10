@@ -93,6 +93,8 @@ function pushState(room) {
 }
 // ---- Draft mode (lib/draft.js): 3 rounds, pick 1 of 2 each round; the card you leave goes to the opponent (3 picks + 3 leftovers = 6), then a normal game
 const DRAFT_SECS = 25;
+// m.mini may be true (the standard Mini Arena) or the name of one of the Mini boards
+const miniName = v => !v ? '' : (typeof v === 'string' && /^mini/.test(v) && B.BOARDS[v]) ? v : 'mini';
 const MINI_TEAM = 4;   // Mini Arena: each side plays with the first 4 Pokémon of its team
 function startDraft(room) {
   const o = DR.makeOffers(); room.dr = { round: 0, offers: o.offers, rar: o.rar, picks: [[], []], left: [[], []], got: [null, null], deadline: 0, timer: null };
@@ -142,7 +144,7 @@ function draftEvoSet(room, seat, choice) {
 }
 function startGame(room) {
   const decks = room.seats.map(s => s.deck); const names = room.seats.map(s => s.name);
-  room.game = E.newGame(decks, names, undefined, { bots: room.seats.map(s => s.bot), randomStart: true, crazy: !!room.crazy, board: room.mini ? 'mini' : 'classic', teamSize: room.mini ? MINI_TEAM : 6 }); room.lastTick = Date.now();
+  room.game = E.newGame(decks, names, undefined, { bots: room.seats.map(s => s.bot), randomStart: true, crazy: !!room.crazy, board: room.mini ? (B.BOARDS[room.mini] ? room.mini : 'mini') : 'classic', teamSize: room.mini ? MINI_TEAM : 6 }); room.lastTick = Date.now();
   room.seats.forEach((s, i) => send(s.ws, { t: 'start', seat: i }));
   pushState(room); botMaybe(room);
 }
@@ -194,13 +196,13 @@ wss.on('connection', ws => {
     const c = ws.ctx;
     const mkSeat = (name, deck, bot, skill) => ({ ws: bot ? null : ws, name: String(name || 'Trainer').slice(0, 24), deck, bot: !!bot, skill: skill == null ? 0.4 : skill, token: Math.random().toString(36).slice(2) });
     if (m.t === 'quick') {
-      const rnd = !!m.random, dft = !!m.draft, cz = !!m.crazy, mn = !!m.mini; if (rnd || dft) { m.deck = randomDeck(Math.random); m.owned = false; }
+      const rnd = !!m.random, dft = !!m.draft, cz = !!m.crazy, mn = miniName(m.mini); if (rnd || dft) { m.deck = randomDeck(Math.random); m.owned = false; }
       const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });
       const name = String(m.name || 'Trainer').slice(0, 24);
       let own = null; if (m.owned) { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
-      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.random === rnd && !!r.draft === dft && !!r.crazy === cz && !!r.mini === mn && (cz ? true : !!r.owned === !!own) && (!own || !r.seats[0].user || r.seats[0].user !== own.user)) { q = r; break; }
+      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.random === rnd && !!r.draft === dft && !!r.crazy === cz && (r.mini || '') === mn && (cz ? true : !!r.owned === !!own) && (!own || !r.seats[0].user || r.seats[0].user !== own.user)) { q = r; break; }
       if (q) { clearTimeout(q.qTimer); q.open = false; q.seats[1] = mkSeat(own ? own.user : name, m.deck); if (own) q.seats[1].user = own.user; c.room = q; c.seat = 1; send(ws, { t: 'room', code: q.code, seat: 1, token: q.seats[1].token }); if (q.draft) startDraft(q); else startGame(q); return; }
-      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true, random: rnd, draft: dft, crazy: cz, mini: mn }; if (own) { room.owned = !cz; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
+      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true, random: rnd, draft: dft, crazy: cz, mini: mn || false }; if (own) { room.owned = !cz; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token }); send(ws, { t: 'waiting', code, quick: true });
       room.qTimer = setTimeout(() => {
         if (!room.open || room.seats[1] || room.game) return; room.open = false; room.owned = false; /* bot games never count for the ladder */
@@ -223,7 +225,7 @@ wss.on('connection', ws => {
       if (m.t === 'bot' && m.boss && Array.isArray(m.boss.allow) && m.boss.allow.length && m.deck && Array.isArray(m.deck.figs) && m.deck.figs.some(i => !(FIGS[i] && FIGS[i].types.some(t => m.boss.allow.includes(t))))) return send(ws, { t: 'err', msg: 'This region only allows ' + m.boss.allow.join(' / ') + ' types.' }); // region type restriction is enforced server-side too
       let own = null; if (m.owned && m.t === 'create') { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
       const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : m.name, m.deck), null], game: null }; if (own) { room.owned = true; room.seats[0].user = own.user; }
-      if (m.t === 'bot' && m.mini && !m.boss) room.mini = true;
+      if (m.t === 'bot' && m.mini && !m.boss) room.mini = miniName(m.mini);
       rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token, bot: m.t === 'bot' });
       if (m.t === 'bot') { const cu = DB.who(m.auth); room.campUser = cu && m.boss ? cu : null; room.campDone = false; room.campStage = String((m.boss && m.boss.stage) || ''); room.campFee = Math.max(0, Math.min(5000, +(m.boss && m.boss.fee) || 0)); if (room.campUser) { try { DB.setResult(room.campUser, { win: false, stage: room.campStage, fee: room.campFee, pending: true }); } catch (e) { } } const bs = m.boss && m.boss.deck && !E.validateDeck(m.boss.deck) ? m.boss : null; room.boss = bs ? { deck: bs.deck, skill: Math.max(0, Math.min(1, +bs.skill || 0)), name: String(bs.name || 'Boss') } : null; room.seats[1] = room.boss ? mkSeat(room.boss.name, room.boss.deck, true, room.boss.skill) : mkSeat('Rival Bot', randomDeck(Math.random), true, 0.85); if (Math.random() < 0.5) { room.seats.reverse(); room.seats.forEach((s, i) => { if (!s.bot) { c.seat = i; send(ws, { t: 'room', code, seat: i, token: s.token, bot: true }); } }); } startGame(room); }
