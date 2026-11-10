@@ -179,6 +179,27 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.92 — Store the pictures in the repo
+
+- `node tools/fetch_pics.js` (run it on your own computer, it needs the picture host) downloads every Pokémon picture into `pics/<id>.jpg`. Commit that folder (~593 files). The server serves them from there first (immutable caching, no network at all), then the runtime cache (`data/pics`), then the upstream site, then a plain redirect. Re-running the script skips files that already exist.
+- Nothing else changes if you skip this step.
+
+## v10.91 — New draft flow, picture caching, in-game blur removed
+
+- **Draft is now 3 rounds, pick 1 of 2.** The card you leave goes to your opponent: your final team = your 3 picks + the 3 cards your opponent left (6 in total, any combination is legal because all 12 offered Pokémon are different species). The 3 received Pokémon stay hidden until the duel starts (the draft summary shows only your picks). Bots, timers, reconnects, Leave and rematch work as before. New test: test/draft_flow.js (12 checks, including that each team = own picks + opponent's leftovers); draft_leave still passes.
+- **Pictures are served by the game server** (`/pic/<id>.jpg`): fetched once from serebii, kept in memory + `data/pics/`, served with `Cache-Control: immutable`, and pre-cached in the background at start-up. Hot-linked images that the browser re-requested on every board redraw could blink; if upstream is unreachable the route redirects to the original link, so nothing gets worse. `PIC_PREFETCH=0` disables the warm-up. New test: test/pics.js.
+- Removed `backdrop-filter` blur from the in-game panels (it is re-rasterised every frame behind the animating board on phones).
+- Phone layouts re-checked at 360, 390, 412, 768 and 1366 px (lobby, deck builder, draft, match): no page-level horizontal scroll.
+
+## v10.90 — Board flicker (themes)
+
+- **Cause:** every redraw wiped and rebuilt the entire board SVG, including the themed background. Most themes use heavy `feTurbulence` noise filters + blend modes over the whole board, so each redraw forced the browser to re-compute them → the board blinked, mostly in themed (random-theme) games.
+- **Fix:** the theme, slab, track lines and gradients are built once per game (kept while theme/seat unchanged) and only the pieces, highlights and goals are redrawn. Goal pulse is also phase-synced. Verified on all 11 themes: the background node stays the same across redraws, no definition growth, redraw ≈5–8 ms.
+
+## v10.89 — Steelix Pull In
+
+- **Fixed:** Steelix's Pull In ("Moves the battle opponent to the P.C. and moves this Pokémon to the bench") only sent the opponent to the P.C.; Steelix now also moves to the bench. Checked every other move whose text mentions the user going to the bench — none were missing it. New test (abilities now 168).
+
 ## v10.88 — Species-limit bug
 
 - **Fixed:** the "max 3 of the same Pokémon" check treated every "Shiny …" figure as the same species ("Shiny"), so a deck with 4+ different Shinies was rejected (and "Shiny Mega X" counted as "Mega"). Prefixes (Shiny / Mega / Alolan / …) are now all stripped, so Shiny Gengar and Gengar count as one species and different Shinies no longer collide. Applied to the engine, draft, bot and campaign deck checks.

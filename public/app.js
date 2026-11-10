@@ -90,7 +90,7 @@ function onMsg(m) {
   else if (m.t === 'draftLeft') { clearInterval(drTimerId); sessionStorage.removeItem('duel_session'); V = null; show('deck'); toast((m.name || 'Your opponent') + ' left the draft.'); }
   else if (m.t === 'draft') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); drawDraft(m); }
   else if (m.t === 'draftWait') { drState.picks = m.picks; drawDraftTeam(); drLock('Pick locked in – waiting for your opponent…'); }
-  else if (m.t === 'draftOpp') { drState.opp = m.n; $('#drOpp').textContent = 'Opponent has picked ' + m.n + ' of 6.'; }
+  else if (m.t === 'draftOpp') { drState.opp = m.n; $('#drOpp').textContent = 'Opponent has picked ' + m.n + ' of ' + DRN + '.'; }
   else if (m.t === 'draftDone') { drDone(m); }
   else if (m.t === 'state') { stateQ.push(m); drain(); }
   else if (m.t === 'err') { if (window.pvpMode && Camp.pvpMsg(m.msg, true)) return; toast(m.msg); if (m.fatal) { sessionStorage.removeItem('duel_session'); } $('#deckErr').textContent = m.msg; }
@@ -254,7 +254,7 @@ function plateAnim(ev) {
 const imgCache = new Map();
 function preloadFigs() { for (const f of V.figs) { const d = FIG[f.fid]; if (d && d.picture && !imgCache.has(d.picture)) { const i = new Image(); i.decoding = 'async'; i.src = d.picture; imgCache.set(d.picture, i); if (i.decode) i.decode().catch(() => {}); } } }
 // Looping CSS animations restart whenever their element is rebuilt; start them at the phase they would be at had they never been rebuilt.
-const LOOPS = [['.dest', 1200], ['#hud .hs.on', 2000], ['#hud .hs.on .hav', 1400], ['.evobtn', 1400], ['.gauge.full i', 1000]];
+const LOOPS = [['.dest', 1200], ['#hud .hs.on', 2000], ['#hud .hs.on .hav', 1400], ['.evobtn', 1400], ['.gauge.full i', 1000], ['.goalpulse', 1800]];
 function syncLoops() { const t = performance.now(); for (const [sel, per] of LOOPS) document.querySelectorAll(sel).forEach(e => { e.style.animationDelay = '-' + (t % per).toFixed(0) + 'ms'; }); }
 function render() {
   if (!V || !BOARD) return;
@@ -362,18 +362,25 @@ function drawCrazyRings() {
 }
 function drawBoard() {
   planAnims();
-  const svg = $('#board'); svg.innerHTML = ''; const defs = sv('defs'); svg.append(defs);
+  // The themed background (noise filters, gradients), slab and track lines never change during a game: build them once and only
+  // rebuild the pieces/highlights on top. Re-running those SVG filters on every redraw made the whole board blink.
+  const svg = $('#board'); const bkey = curTheme() + '|' + V.seat;
+  if (svg._key !== bkey) {
+    svg.innerHTML = ''; const defs = sv('defs'); svg.append(defs);
   defs.append(
-    sv('filter', { id: 'glow', filterUnits: 'userSpaceOnUse', x: -50, y: -150, width: 760, height: 950 }, sv('feGaussianBlur', { stdDeviation: 3, result: 'b' }), sv('feMerge', {}, sv('feMergeNode', { in: 'b' }), sv('feMergeNode', { in: 'SourceGraphic' }))),
-    sv('radialGradient', { id: 'nodeG', cx: 0.4, cy: 0.35, r: 0.8 }, sv('stop', { offset: 0, 'stop-color': '#fff' }), sv('stop', { offset: 1, 'stop-color': '#b8c4e4' })),
-    sv('radialGradient', { id: 'gOrange' }, sv('stop', { offset: '0', 'stop-color': '#ffd27a' }), sv('stop', { offset: '0.55', 'stop-color': '#ff9a2e' }), sv('stop', { offset: '1', 'stop-color': '#ff7a0000' })),
-    sv('radialGradient', { id: 'gBlue' }, sv('stop', { offset: '0', 'stop-color': '#bfe4ff' }), sv('stop', { offset: '0.55', 'stop-color': '#3d9bff' }), sv('stop', { offset: '1', 'stop-color': '#2a6cff00' })));
-  paintTheme(curTheme(), sv, defs, svg, { x: -30, y: -130, w: 720, h: 910 });
-  drawSlab(svg, defs);
-  svg.append(
-    sv('line', { x1: -4, y1: 30, x2: 664, y2: 30, stroke: '#f2b705', 'stroke-opacity': 0.75, 'stroke-width': 4, 'stroke-dasharray': '14 8', 'stroke-linecap': 'round', filter: 'url(#glow)' }), sv('line', { x1: -4, y1: 640, x2: 664, y2: 640, stroke: '#f2b705', 'stroke-opacity': 0.75, 'stroke-width': 4, 'stroke-dasharray': '14 8', 'stroke-linecap': 'round', filter: 'url(#glow)' }));
-  const seen = new Set();
-  for (const a in BOARD.adj) for (const b of BOARD.adj[a]) { const k = [a, b].sort().join('|'); if (seen.has(k)) continue; seen.add(k); const A = PT(a), Bp = PT(b); const ln = (w, s, o, f) => sv('line', { x1: A.x, y1: A.y, x2: Bp.x, y2: Bp.y, stroke: s, 'stroke-width': w, 'stroke-linecap': 'round', opacity: o, filter: f }); svg.append(ln(13, '#000', 0.4), ln(8, '#dfe8ff', 1, 'url(#glow)'), ln(3.5, '#ffffff', 1)); }
+      sv('filter', { id: 'glow', filterUnits: 'userSpaceOnUse', x: -50, y: -150, width: 760, height: 950 }, sv('feGaussianBlur', { stdDeviation: 3, result: 'b' }), sv('feMerge', {}, sv('feMergeNode', { in: 'b' }), sv('feMergeNode', { in: 'SourceGraphic' }))),
+      sv('radialGradient', { id: 'nodeG', cx: 0.4, cy: 0.35, r: 0.8 }, sv('stop', { offset: 0, 'stop-color': '#fff' }), sv('stop', { offset: 1, 'stop-color': '#b8c4e4' })),
+      sv('radialGradient', { id: 'gOrange' }, sv('stop', { offset: '0', 'stop-color': '#ffd27a' }), sv('stop', { offset: '0.55', 'stop-color': '#ff9a2e' }), sv('stop', { offset: '1', 'stop-color': '#ff7a0000' })),
+      sv('radialGradient', { id: 'gBlue' }, sv('stop', { offset: '0', 'stop-color': '#bfe4ff' }), sv('stop', { offset: '0.55', 'stop-color': '#3d9bff' }), sv('stop', { offset: '1', 'stop-color': '#2a6cff00' })));
+    paintTheme(curTheme(), sv, defs, svg, { x: -30, y: -130, w: 720, h: 910 });
+    drawSlab(svg, defs);
+    svg.append(
+      sv('line', { x1: -4, y1: 30, x2: 664, y2: 30, stroke: '#f2b705', 'stroke-opacity': 0.75, 'stroke-width': 4, 'stroke-dasharray': '14 8', 'stroke-linecap': 'round', filter: 'url(#glow)' }), sv('line', { x1: -4, y1: 640, x2: 664, y2: 640, stroke: '#f2b705', 'stroke-opacity': 0.75, 'stroke-width': 4, 'stroke-dasharray': '14 8', 'stroke-linecap': 'round', filter: 'url(#glow)' }));
+    const seen = new Set();
+    for (const a in BOARD.adj) for (const b of BOARD.adj[a]) { const k = [a, b].sort().join('|'); if (seen.has(k)) continue; seen.add(k); const A = PT(a), Bp = PT(b); const ln = (w, s, o, f) => sv('line', { x1: A.x, y1: A.y, x2: Bp.x, y2: Bp.y, stroke: s, 'stroke-width': w, 'stroke-linecap': 'round', opacity: o, filter: f }); svg.append(ln(13, '#000', 0.4), ln(8, '#dfe8ff', 1, 'url(#glow)'), ln(3.5, '#ffffff', 1)); }
+    svg._key = bkey; svg._n = svg.childNodes.length;
+  } else while (svg.childNodes.length > svg._n) svg.lastChild.remove();
+  const defs = sv('defs'); svg.append(defs);   // per-redraw defs (clip paths for the pieces)
   const choose = V.legal && V.legal.choose;
   const D = new Set(choose ? (PICKK.includes(choose.kind) ? [] : choose.options) : (V.legal && V.phase === 'main' ? dests() : []));
   const goalMine = BOARD.goals[V.seat];
@@ -603,15 +610,16 @@ function confetti(box, n) {
 // ---- Draft screen
 const DRC = { C: '#9aa3b5', UC: '#58c26b', R: '#4aa8ff', EX: '#c58cf2', UX: '#ffcb05' }; let drState = { picks: [], opp: 0 }, drTimerId = null, drCountT = null;
 function drLock(msg) { $('#drOpts').querySelectorAll('button').forEach(b => (b.disabled = true)); const s = $('#drStatus'); s.classList.remove('hidden'); s.textContent = msg; }
-function drawDraftTeam() { const t = $('#drTeam'); t.innerHTML = ''; for (let i = 0; i < 6; i++) { const id = drState.picks[i]; const f = id != null ? FIG[id] : null; t.append(f ? el('div', { class: 'drslot', style: '--rc:' + DRC[f.rarity], title: f.name, onclick: () => infoCard($('#drInfo'), f) }, img(f), el('span', {}, f.name)) : el('div', { class: 'drslot empty' }, String(i + 1))); } }
-function drSteps(round) { const t = $('#drSteps'); t.innerHTML = ''; for (let i = 0; i < 6; i++) t.append(el('i', { class: i < round ? 'done' : i === round ? 'now' : '' })); }
+function drawDraftTeam() { const t = $('#drTeam'); t.innerHTML = ''; for (let i = 0; i < DRN; i++) { const id = drState.picks[i]; const f = id != null ? FIG[id] : null; t.append(f ? el('div', { class: 'drslot', style: '--rc:' + DRC[f.rarity], title: f.name, onclick: () => infoCard($('#drInfo'), f) }, img(f), el('span', {}, f.name)) : el('div', { class: 'drslot empty' }, String(i + 1))); } }
+const DRN = 3;   // draft rounds
+function drSteps(round) { const t = $('#drSteps'); t.innerHTML = ''; for (let i = 0; i < DRN; i++) t.append(el('i', { class: i < round ? 'done' : i === round ? 'now' : '' })); }
 let drLastKey = null;
 function drawDraft(m) {
   const key = m.round + ':' + m.options.join(','); const same = key === drLastKey && !$('#draft').classList.contains('hidden'); drLastKey = key;
-  if (same) { drState.picks = m.picks || drState.picks; drState.opp = m.oppPicks || drState.opp; $('#drOpp').textContent = 'Opponent has picked ' + drState.opp + ' of 6.'; if (m.picked) drLock('Pick locked in – waiting for your opponent…'); clearInterval(drTimerId); const tk = () => { const s2 = Math.max(0, Math.ceil((m.deadline - Date.now()) / 1000)); $('#drTimer').textContent = '⏱ ' + s2 + 's'; $('#drTimer').classList.toggle('low', s2 <= 7); }; tk(); drTimerId = setInterval(tk, 500); return; }
+  if (same) { drState.picks = m.picks || drState.picks; drState.opp = m.oppPicks || drState.opp; $('#drOpp').textContent = 'Opponent has picked ' + drState.opp + ' of ' + DRN + '.'; if (m.picked) drLock('Pick locked in – waiting for your opponent…'); clearInterval(drTimerId); const tk = () => { const s2 = Math.max(0, Math.ceil((m.deadline - Date.now()) / 1000)); $('#drTimer').textContent = '⏱ ' + s2 + 's'; $('#drTimer').classList.toggle('low', s2 <= 7); }; tk(); drTimerId = setInterval(tk, 500); return; }
   show('draft'); requestAnimationFrame(() => { window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0; }); drSteps(m.round); $('#drHow').classList.toggle('hidden', m.round >= 2); drState = { picks: m.picks || [], opp: m.oppPicks || 0 }; $('#drReveal').classList.add('hidden'); $('#drOpts').classList.remove('hidden');
-  $('#drTitle').textContent = '🃏 Draft – pick ' + (m.round + 1) + ' of ' + m.total; $('#drSub').textContent = 'Both players are offered 2 ' + ({ C: 'Common', UC: 'Uncommon', R: 'Rare', EX: 'EX', UX: 'Ultra' }[m.rarity] || '') + ' Pokémon this round. Pick one – your opponent picks at the same time, and teams are revealed at the end.';
-  const box = $('#drOpts'); box.innerHTML = ''; $('#drStatus').classList.add('hidden'); $('#drOpp').textContent = 'Opponent has picked ' + drState.opp + ' of 6.';
+  $('#drTitle').textContent = '🃏 Draft – pick ' + (m.round + 1) + ' of ' + m.total; $('#drSub').textContent = 'Both players are offered 2 ' + ({ C: 'Common', UC: 'Uncommon', R: 'Rare', EX: 'EX', UX: 'Ultra' }[m.rarity] || '') + ' Pokémon this round. Pick one – the one you leave goes to your opponent, and you get the ones they leave (revealed when the duel starts).';
+  const box = $('#drOpts'); box.innerHTML = ''; $('#drStatus').classList.add('hidden'); $('#drOpp').textContent = 'Opponent has picked ' + drState.opp + ' of ' + DRN + '.';
   m.options.forEach((id, idx) => { const f = FIG[id];
     box.append(el('div', { class: 'dcard', style: '--rc:' + DRC[f.rarity] }, el('div', { class: 'dtop' }, img(f), el('div', {}, el('b', {}, f.name), el('div', { class: 'small' }, f.rarity + ' · MP ' + f.mp), el('div', { class: 'small dtypes' }, f.types.join(' / ')))),
       wheelSvg(f.segs), (f.ability && !/^none/i.test(f.ability)) ? el('div', { class: 'small dab' }, el('b', {}, 'Ability: '), f.ability) : el('div', { class: 'small muted' }, 'No ability'),
@@ -620,9 +628,9 @@ function drawDraft(m) {
   drawDraftTeam(); clearInterval(drTimerId); const tick = () => { const s = Math.max(0, Math.ceil((m.deadline - Date.now()) / 1000)); $('#drTimer').textContent = '⏱ ' + s + 's'; $('#drTimer').classList.toggle('low', s <= 7); }; tick(); drTimerId = setInterval(tick, 500);
 }
 function drDone(m) {
-  drLastKey = null; drSteps(6); $('#drHow').classList.add('hidden');
-  clearInterval(drTimerId); $('#drTimer').textContent = ''; $('#drOpts').classList.add('hidden'); $('#drStatus').classList.add('hidden'); $('#drTitle').textContent = '🃏 Teams revealed!'; $('#drSub').textContent = ''; { let n = 4; $('#drTimer').innerHTML = ''; const c = el('span', { class: 'drcount' }); $('#drTimer').append(c); const tkc = () => { c.textContent = 'Duel starts in ' + n + '…'; if (n-- > 0) drCountT = setTimeout(tkc, 1000); }; clearTimeout(drCountT); tkc(); } drState.picks = m.mine; drawDraftTeam();
-  const r = $('#drReveal'); r.classList.remove('hidden'); r.innerHTML = ''; r.append(el('h4', {}, 'Opponent’s team'), el('div', { class: 'drteam' }, ...m.theirs.map(id => { const f = FIG[id]; return el('div', { class: 'drslot', style: '--rc:' + DRC[f.rarity], title: f.name }, img(f), el('span', {}, f.name)); })), el('div', { class: 'small muted' }, 'Plates were dealt at random (' + (m.plates || []).map(k => (PL[k] || {}).name || k).join(', ') + ').'));
+  drLastKey = null; drSteps(DRN); $('#drHow').classList.add('hidden');
+  clearInterval(drTimerId); $('#drTimer').textContent = ''; $('#drOpts').classList.add('hidden'); $('#drStatus').classList.add('hidden'); $('#drTitle').textContent = '🃏 Draft complete!'; $('#drSub').textContent = ''; { let n = 4; $('#drTimer').innerHTML = ''; const c = el('span', { class: 'drcount' }); $('#drTimer').append(c); const tkc = () => { c.textContent = 'Duel starts in ' + n + '…'; if (n-- > 0) drCountT = setTimeout(tkc, 1000); }; clearTimeout(drCountT); tkc(); } drState.picks = m.mine; drawDraftTeam();
+  const r = $('#drReveal'); r.classList.remove('hidden'); r.innerHTML = ''; r.append(el('h4', {}, 'Your 3 picks + ' + (m.received || 3) + ' Pokémon your opponent left'), el('div', { class: 'small muted' }, 'The ' + (m.received || 3) + ' extra Pokémon are revealed when the duel starts. Plates were dealt at random (' + (m.plates || []).map(k => (PL[k] || {}).name || k).join(', ') + ').'));
 }
 function showEnd() {
   if (endShown) return; endShown = true; const o = $('#endOverlay');

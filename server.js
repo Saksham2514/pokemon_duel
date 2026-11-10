@@ -10,7 +10,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 const PUB = path.join(__dirname, 'public');
 
 const figPayload = JSON.stringify({
-  figures: LIST.map(f => ({ id: f.id, name: f.name, rarity: f.rarity, mp: f.mp, cost: f.cost, types: f.types, ability: f.ability, abilityName: f.abilityName, picture: f.picture, active: Object.keys(f.flags).concat([...new Set(f.rules.map(r => r.k))]), segs: f.segs.map(s => ({ n: s.name, c: s.color, s: s.size, d: s.dmg, t: s.notes, ok: s.simulated })), z: f.zsegs.map(s => ({ n: s.name, c: s.color, s: s.size, d: s.dmg, t: s.notes, ok: s.simulated })) })),
+  figures: LIST.map(f => ({ id: f.id, name: f.name, rarity: f.rarity, mp: f.mp, cost: f.cost, types: f.types, ability: f.ability, abilityName: f.abilityName, picture: '/pic/' + f.id + '.jpg', active: Object.keys(f.flags).concat([...new Set(f.rules.map(r => r.k))]), segs: f.segs.map(s => ({ n: s.name, c: s.color, s: s.size, d: s.dmg, t: s.notes, ok: s.simulated })), z: f.zsegs.map(s => ({ n: s.name, c: s.color, s: s.size, d: s.dmg, t: s.notes, ok: s.simulated })) })),
   evo: { next: require('./lib/evolution').NEXT },
   plates: PLATES, board: { points: B.POINTS, xy: B.XY, adj: B.ADJ, entry: B.ENTRY, goals: B.GOALS },
 });
@@ -37,8 +37,42 @@ function handleApi(req, res, url) {
   });
 }
 
+// ---- Pokémon pictures: fetched once from the upstream site, kept in memory + data/pics, and served from here with permanent browser caching
+// (hot-linked pictures that the browser re-requested on every board redraw blinked). If upstream is unreachable we redirect to it so nothing gets worse.
+// pics/<id>.jpg = pictures committed to the repo with tools/fetch_pics.js (permanent, no network needed); data/pics = runtime cache
+const PIC_DIR = path.join(__dirname, 'data', 'pics'); const PIC_BUNDLED = path.join(__dirname, 'pics'); const picMem = new Map(); const picBusy = new Map();
+// picFail: id -> time of last failure (retry after 5 min, redirect straight away meanwhile)
+const picFail = new Map(); const PIC_ORIGIN = process.env.PIC_ORIGIN || '';
+try { fs.mkdirSync(PIC_DIR, { recursive: true }); } catch (e) {}
+function picLoad(id) {
+  if (picMem.has(id)) return Promise.resolve(picMem.get(id));
+  if (picBusy.has(id)) return picBusy.get(id);
+  if (picFail.has(id) && Date.now() - picFail.get(id) < 300000) return Promise.resolve(null);
+  const f = FIGS[id]; if (!f || !f.picture) return Promise.resolve(null);
+  const file = path.join(PIC_DIR, id + '.img');
+  try { const b = fs.readFileSync(path.join(PIC_BUNDLED, id + '.jpg')); const v = { b, ct: b[0] === 0x89 ? 'image/png' : 'image/jpeg' }; picMem.set(id, v); return Promise.resolve(v); } catch (e) {}
+  const pr = (async () => {
+    try { const b = fs.readFileSync(file); const ct = b[0] === 0x89 ? 'image/png' : 'image/jpeg'; const v = { b, ct }; picMem.set(id, v); return v; } catch (e) {}
+    try {
+      const url = PIC_ORIGIN ? PIC_ORIGIN + new URL(f.picture).pathname : f.picture;
+      const r = await fetch(url, { signal: AbortSignal.timeout(4000) }); const ct = (r.headers.get('content-type') || '').split(';')[0];
+      if (!r.ok || !/^image\//.test(ct)) return null; const b = Buffer.from(await r.arrayBuffer()); if (!b.length) return null;
+      const v = { b, ct }; picMem.set(id, v); fs.writeFile(file, b, () => {}); return v;
+    } catch (e) { return null; }
+  })().then(v => { if (!v) picFail.set(id, Date.now()); else picFail.delete(id); return v; }).finally(() => picBusy.delete(id));
+  picBusy.set(id, pr); return pr;
+}
+function servePic(id, res) {
+  picLoad(id).then(v => {
+    if (v) { res.writeHead(200, { 'Content-Type': v.ct, 'Cache-Control': 'public, max-age=31536000, immutable' }); return res.end(v.b); }
+    const f = FIGS[id]; if (!f) { res.writeHead(404); return res.end(); }
+    res.writeHead(302, { Location: f.picture, 'Cache-Control': 'no-store' }); res.end();   // upstream unreachable: let the browser try the original link
+  });
+}
+
 const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
+  const pm = /^\/pic\/(\d+)\.jpg$/.exec(url); if (pm) return servePic(+pm[1], res);
   if (url === '/api/data') { res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }); return res.end(figPayload); }
   if (url.startsWith('/api/') && url !== '/api/data') return handleApi(req, res, url);
   let p = path.normalize(path.join(PUB, url === '/' ? 'index.html' : url));
@@ -56,28 +90,28 @@ function pushState(room) {
   room.seats.forEach((s, i) => { if (s && s.ws) send(s.ws, { t: 'state', v: E.view(room.game, i), battle: room.game.lastBattleFresh ? room.game.lastBattle : null }); });
   room.game.lastBattleFresh = false;
 }
-// ---- Draft mode (lib/draft.js): 6 rounds, pick 1 of 2 each round, then a normal game
+// ---- Draft mode (lib/draft.js): 3 rounds, pick 1 of 2 each round; the card you leave goes to the opponent (3 picks + 3 leftovers = 6), then a normal game
 const DRAFT_SECS = 25;
 function startDraft(room) {
-  const o = DR.makeOffers(); room.dr = { round: 0, offers: o.offers, rar: o.rar, picks: [[], []], got: [null, null], deadline: 0, timer: null };
+  const o = DR.makeOffers(); room.dr = { round: 0, offers: o.offers, rar: o.rar, picks: [[], []], left: [[], []], got: [null, null], deadline: 0, timer: null };
   room.seats.forEach(s => { if (s) s.deck = { figs: [], plates: [] }; }); draftRound(room);
 }
 function draftRound(room) {
   const d = room.dr; if (!d) return; clearTimeout(d.timer); d.got = [null, null]; d.deadline = Date.now() + DRAFT_SECS * 1000;
-  room.seats.forEach((s, i) => { if (s && s.ws) send(s.ws, { t: 'draft', round: d.round, total: 6, rarity: d.rar[d.round], options: d.offers[i][d.round], picks: d.picks[i], oppPicks: d.picks[1 - i].length, deadline: d.deadline }); });
+  room.seats.forEach((s, i) => { if (s && s.ws) send(s.ws, { t: 'draft', round: d.round, total: DR.ROUNDS, rarity: d.rar[d.round], options: d.offers[i][d.round], picks: d.picks[i], oppPicks: d.picks[1 - i].length, deadline: d.deadline }); });
   room.seats.forEach((s, i) => { if (s && s.bot) setTimeout(() => { if (room.dr === d && d.got[i] == null) draftPick(room, i, Math.random() < 0.5 ? 0 : 1); }, 700 + Math.random() * 1400); });
   d.timer = setTimeout(() => { if (room.dr !== d) return; for (const i of [0, 1]) if (d.got[i] == null) draftPick(room, i, Math.random() < 0.5 ? 0 : 1); }, DRAFT_SECS * 1000 + 500);
 }
 function draftPick(room, seat, idx) {
   const d = room.dr; if (!d || d.got[seat] != null || (idx !== 0 && idx !== 1)) return;
-  d.got[seat] = idx; const id = d.offers[seat][d.round][idx]; d.picks[seat].push(id);
+  d.got[seat] = idx; const pair = d.offers[seat][d.round]; d.picks[seat].push(pair[idx]); d.left[seat].push(pair[1 - idx]);   // the card you leave is handed to your opponent
   const s = room.seats[seat]; if (s && s.ws) send(s.ws, { t: 'draftWait', picks: d.picks[seat] });
   const o = room.seats[1 - seat]; if (o && o.ws) send(o.ws, { t: 'draftOpp', n: d.picks[seat].length });
   if (d.got[0] == null || d.got[1] == null) return;
   clearTimeout(d.timer); d.round++;
-  if (d.round < 6) return setTimeout(() => draftRound(room), 600);
-  room.seats.forEach((s2, i) => { s2.deck = { figs: d.picks[i].slice(), plates: DR.plateSet() }; autoEvo(s2.deck, Math.random, Math.random() < 0.6); });
-  room.seats.forEach((s2, i) => { if (s2.ws) send(s2.ws, { t: 'draftDone', mine: d.picks[i], theirs: d.picks[1 - i], plates: s2.deck.plates }); });
+  if (d.round < DR.ROUNDS) return setTimeout(() => draftRound(room), 600);
+  room.seats.forEach((s2, i) => { s2.deck = { figs: d.picks[i].concat(d.left[1 - i]), plates: DR.plateSet() }; autoEvo(s2.deck, Math.random, Math.random() < 0.6); });
+  room.seats.forEach((s2, i) => { if (s2.ws) send(s2.ws, { t: 'draftDone', mine: d.picks[i], received: d.left[1 - i].length, plates: s2.deck.plates }); });
   room.dr = null; setTimeout(() => { if (!room.game && !room.cancelled) startGame(room); }, 4500);
 }
 function startGame(room) {
@@ -178,7 +212,7 @@ wss.on('connection', ws => {
       const room = rooms.get(String(m.code || '').toUpperCase()); if (!room) return send(ws, { t: 'err', msg: 'Room expired.', fatal: true });
       const i = room.seats.findIndex(s => s && s.token === m.token); if (i < 0) return send(ws, { t: 'err', msg: 'Bad token.', fatal: true });
       room.seats[i].ws = ws; c.room = room; c.seat = i; send(ws, { t: 'room', code: room.code, seat: i, token: m.token });
-      if (room.game) { send(ws, { t: 'start', seat: i }); pushState(room); } else if (room.dr) { const d = room.dr; send(ws, { t: 'draft', round: d.round, total: 6, rarity: d.rar[d.round], options: d.offers[i][d.round], picks: d.picks[i], oppPicks: d.picks[1 - i].length, deadline: d.deadline, picked: d.got[i] != null }); } else send(ws, { t: 'waiting', code: room.code });
+      if (room.game) { send(ws, { t: 'start', seat: i }); pushState(room); } else if (room.dr) { const d = room.dr; send(ws, { t: 'draft', round: d.round, total: DR.ROUNDS, rarity: d.rar[d.round], options: d.offers[i][d.round], picks: d.picks[i], oppPicks: d.picks[1 - i].length, deadline: d.deadline, picked: d.got[i] != null }); } else send(ws, { t: 'waiting', code: room.code });
     } else if (m.t === 'act') {
       const room = c.room; if (!room || !room.game) return;
       const r = doAct(room, c.seat, m.a); if (r && r.error) send(ws, { t: 'err', msg: r.error });
@@ -208,7 +242,10 @@ wss.on('connection', ws => {
 });
 // Clock: disconnected players still burn time
 DB.init().then(() => {
-  server.listen(PORT, () => console.log('Pokémon Duel server on http://localhost:' + PORT));
+  server.listen(PORT, () => {
+  console.log('Pokémon Duel server on http://localhost:' + PORT);
+  if (process.env.PIC_PREFETCH !== '0') setTimeout(() => { const ids = LIST.map(f => f.id); let n = 0, ok = 0; let miss = 0; const worker = async () => { while (n < ids.length && miss < 6) { const v = await picLoad(ids[n++]); if (v) { ok++; miss = 0; } else miss++; } }; Promise.all([worker(), worker(), worker(), worker()]).then(() => console.log('Pictures cached: ' + ok + '/' + ids.length)); }, 3000);   // warm the cache in the background
+});
 }).catch(e => { console.error('Could not open the database:', e.message); process.exit(1); });
 const shutdown = () => { DB.flush().finally(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); };
 process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);

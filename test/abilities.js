@@ -467,6 +467,12 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
   ok(E.validateDeck({ figs: pick, plates: [] }) === null, 'a deck of 6 different Shiny Pokémon is valid');
   const eev = L3.filter(f => /^(Shiny )?Eevee$/.test(f.name.replace(/ [A-Z]+$/, ''))); const rest = pick.filter(id => !/Eevee/.test(require('../lib/figures').FIGS[id].name)).slice(0, 2);
   if (eev.length >= 4) ok(/Max 3/.test(E.validateDeck({ figs: [eev[0].id, eev[1].id, eev[2].id, eev[3].id, ...rest], plates: [] }) || ''), 'Shiny Eevee and Eevee count as one species (max 3)'); }
+// Steelix Pull In: the opponent goes to the P.C. AND Steelix moves to the bench
+{ const L4 = require('../lib/figures').LIST, BB4 = require('../lib/board'); const st = L4.find(x => x.name === 'Steelix'); const oth = L4.filter(x => !x.rules.length && x.mp >= 1 && x.id !== st.id).slice(0, 11).map(x => x.id);
+  const gg = E.newGame([{ figs: [st.id, ...oth.slice(0, 5)], plates: [] }, { figs: oth.slice(5, 11), plates: [] }], ['A', 'B'], 4);
+  const S = Object.values(gg.figs).find(f => f.owner === 0 && f.fid === st.id), D = Object.values(gg.figs).find(f => f.owner === 1);
+  place(gg, S, 'I00'); place(gg, D, BB4.ADJ['I00'][0]); const seg = st.segs.find(x => x.name === 'Pull In'); T.runOps(gg, seg.ops, { self: S, opp: D });
+  ok(D.loc === 'pc' && S.loc === 'bench', 'Steelix Pull In: opponent to P.C. and Steelix to the bench (' + D.loc + '/' + S.loc + ')'); }
 console.log(`ability tests: ${pass} passed, ${fail} failed`);
 
 // optional battle: skipping ends the turn without a fight; the battle ends the turn

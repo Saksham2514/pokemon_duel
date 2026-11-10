@@ -571,7 +571,7 @@
     const wait = 'Searching for an opponent… a bot joins in a few seconds if nobody is found. Casual: no ladder, no rewards.';
     return el('div', { style: 'margin-top:10px' }, el('div', { class: 'small muted' }, 'Casual modes – no ladder points and no rewards. Crazy match uses your own deck; Draft and Random-deck use temporary teams:'),
       el('div', { class: 'row gap', style: 'margin-top:6px' },
-        q('🃏 Draft match', 'Pick 1 of 2 Pokémon for each of 6 slots, then duel', wait)({ draft: true }),
+        q('🃏 Draft match', 'Pick 1 of 2 Pokémon three times; the ones you leave go to your opponent and you get theirs', wait)({ draft: true }),
         q('Draft vs bot', 'Draft practice against a bot', 'Starting draft…')({ t: 'draftBot' }),
         q('🌀 Crazy match', 'Play with your own deck; every 5–7 turns something random changes for both players', wait)({ crazy: true }),
         q('🌀 Crazy Draft', 'Draft first, then Crazy Mode', wait)({ crazy: true, draft: true }),

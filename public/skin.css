@@ -232,3 +232,6 @@ input:focus,select:focus{outline:2px solid var(--gold2);outline-offset:1px}
 @media(max-width:520px){#hud{grid-template-columns:minmax(0,1fr) 46px minmax(0,1fr)}#hud .hs{padding:3px 6px;gap:5px}#hud .hav{width:24px;height:24px;font-size:12px;border-width:1.5px}#hud .hc{font-size:12px}#hud .hn{font-size:11px}#hud .hko{font-size:10px}#hud .hko b{font-size:12px}}
 
 .dcard .dtypes{text-transform:capitalize;color:#9fd0ff;letter-spacing:.03em}
+
+/* In a match, the board and HUD animate constantly: a blurred backdrop behind them is re-rasterised every frame on phones (flicker/jank). The 3px blur is barely visible, so drop it in-game. */
+#game .panel, #game .zone, #game #dock, #game .camphead { backdrop-filter: none; -webkit-backdrop-filter: none; }
