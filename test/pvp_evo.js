@@ -22,6 +22,16 @@ const deck = (mega, plates) => ({ figs: [id('Charmander'), ...filler.slice(0, 5)
   // 2. missing Charmeleon in the collection
   const C = await account('pvpC', [id('Charmander'), id('Charizard'), id('Mega Charizard X')], { mega_mega_charizard_x: 1 }); const c = await conn(); c.ws.send(JSON.stringify({ t: 'create', owned: true, auth: C, name: 'pvpC', deck: deck(true, ['mega_mega_charizard_x']) })); await wait(500);
   const e2 = c.msgs.find(m => m.t === 'err'); ok(e2 && /Charmeleon/.test(e2.msg), 'room refused when an evolution stage is not owned: ' + (e2 && e2.msg)); c.ws.close();
+  // 2b. Collection PvP on the Mini Arena: owned-card check still applies, both players land on the mini board, a classic owned queue never matches it
+  { const M1 = await account('pvpM1', [], {}), M2 = await account('pvpM2', [], {}), M3 = await account('pvpM3', [], {}); const d6 = { figs: filler.slice(0, 6), plates: [] };
+    const m1 = await conn(), m3 = await conn(), m2 = await conn();
+    m1.ws.send(JSON.stringify({ t: 'quick', owned: true, mini: true, auth: M1, name: 'm1', deck: d6 })); await wait(300);
+    m3.ws.send(JSON.stringify({ t: 'quick', owned: true, auth: M3, name: 'm3', deck: d6 })); await wait(500);
+    ok(!m3.msgs.some(m => m.t === 'start'), 'a classic owned queue does not match a Mini Arena PvP player');
+    m2.ws.send(JSON.stringify({ t: 'quick', owned: true, mini: true, auth: M2, name: 'm2', deck: d6 })); await wait(1200);
+    const sm = m1.msgs.filter(m => m.t === 'state').pop(); ok(sm && sm.v.board === 'mini', 'owned Mini Arena PvP game is played on the mini board');
+    const bad = await conn(); bad.ws.send(JSON.stringify({ t: 'quick', owned: true, mini: true, auth: M1, name: 'bad', deck: { figs: [id('Charmander'), ...filler.slice(0, 5)], plates: [] } })); await wait(500);
+    ok(bad.msgs.some(m => m.t === 'err'), 'Mini Arena PvP still checks that you own the Pokémon'); [m1, m2, m3, bad].forEach(x => x.ws.close()); }
   // 3. missing Mega form
   const D = await account('pvpD', [id('Charmander'), id('Charmeleon'), id('Charizard')], { mega_mega_charizard_x: 1 }); const d = await conn(); d.ws.send(JSON.stringify({ t: 'create', owned: true, auth: D, name: 'pvpD', deck: deck(true, ['mega_mega_charizard_x']) })); await wait(500);
   const e3 = d.msgs.find(m => m.t === 'err'); ok(e3 && /Mega Charizard X/.test(e3.msg), 'room refused when the Mega form is not owned: ' + (e3 && e3.msg)); d.ws.close();

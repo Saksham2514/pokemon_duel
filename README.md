@@ -179,6 +179,12 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.102 — Eevee no longer evolves on its own; Mini Arena in Collection PvP
+
+- **Fixed:** Eevee (Spontaneous Evolution / Bright Arrow: "may evolve when it moves from the P.C. to the bench") evolved automatically, into a random form if none was chosen. It now only becomes *ready to evolve* (log line + the normal Evolve button), so the player decides when, and it uses the form chosen in the team builder / draft (a default is queued if none was chosen). Other "may evolve" cards were checked: only the Knock-Out variant (evolve instead of going to the P.C.) still triggers by itself.
+- **New:** 🔷 *Mini Arena* button in the Collection PvP lobby(s) (Campaign → PvP, and the PvP quick-match box). Same owned-cards check and PvP record as a normal Collection PvP match, played on the Mini Arena board; it only matches other Mini Arena PvP players.
+- Tests: evolution 56 (Eevee tests rewritten for the new behaviour), pvp_evo extended with the Mini Arena queue.
+
 ## v10.101 — Spark Noise
 
 - **Implemented:** Vikavolt's Spark Noise. When it moves from the bench to the field, every Pokémon on the opponent's bench spins; each one that spins a Purple Attack gains Wait 1 (bench spins appear in the log). New tests (abilities now 183).

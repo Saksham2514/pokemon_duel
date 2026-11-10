@@ -197,9 +197,9 @@ wss.on('connection', ws => {
       const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });
       const name = String(m.name || 'Trainer').slice(0, 24);
       let own = null; if (m.owned) { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
-      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.random === rnd && !!r.draft === dft && !!r.crazy === cz && !!r.mini === mn && (cz || mn ? true : !!r.owned === !!own) && (!own || !r.seats[0].user || r.seats[0].user !== own.user)) { q = r; break; }
+      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.random === rnd && !!r.draft === dft && !!r.crazy === cz && !!r.mini === mn && (cz ? true : !!r.owned === !!own) && (!own || !r.seats[0].user || r.seats[0].user !== own.user)) { q = r; break; }
       if (q) { clearTimeout(q.qTimer); q.open = false; q.seats[1] = mkSeat(own ? own.user : name, m.deck); if (own) q.seats[1].user = own.user; c.room = q; c.seat = 1; send(ws, { t: 'room', code: q.code, seat: 1, token: q.seats[1].token }); if (q.draft) startDraft(q); else startGame(q); return; }
-      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true, random: rnd, draft: dft, crazy: cz, mini: mn }; if (own) { room.owned = !cz && !mn; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
+      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true, random: rnd, draft: dft, crazy: cz, mini: mn }; if (own) { room.owned = !cz; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token }); send(ws, { t: 'waiting', code, quick: true });
       room.qTimer = setTimeout(() => {
         if (!room.open || room.seats[1] || room.game) return; room.open = false; room.owned = false; /* bot games never count for the ladder */
@@ -245,7 +245,7 @@ wss.on('connection', ws => {
       const r = doAct(room, c.seat, m.a); if (r && r.error) send(ws, { t: 'err', msg: r.error });
     } else if (m.t === 'rematch') {
       const room = c.room; if (!room || !room.seats[0] || !room.seats[1]) return; const s = room.seats[c.seat];
-      const fixedMode = !!(room.draft || room.random || room.crazy || room.mini); // queue modes keep their own team: the client's builder deck is not what was played
+      const fixedMode = !!(room.draft || room.random || room.crazy || (room.mini && !room.owned)); // queue modes keep their own team: the client's builder deck is not what was played
       let deck = m.random && !room.owned ? randomDeck(Math.random) : fixedMode ? s.deck : (m.deck && !E.validateDeck(m.deck) && (!room.owned || !checkOwned(m.auth, m.deck).error) ? m.deck : s.deck); s.nextDeck = deck;
       const humans = room.seats.filter(x => !x.bot);
       if (humans.length === 1) { room.seats.forEach(x => { if (x.bot) x.nextDeck = room.boss ? room.boss.deck : randomDeck(Math.random); }); }
