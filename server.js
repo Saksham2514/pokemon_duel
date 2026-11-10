@@ -93,6 +93,7 @@ function pushState(room) {
 }
 // ---- Draft mode (lib/draft.js): 3 rounds, pick 1 of 2 each round; the card you leave goes to the opponent (3 picks + 3 leftovers = 6), then a normal game
 const DRAFT_SECS = 25;
+const MINI_TEAM = 4;   // Mini Arena: each side plays with the first 4 Pokémon of its team
 function startDraft(room) {
   const o = DR.makeOffers(); room.dr = { round: 0, offers: o.offers, rar: o.rar, picks: [[], []], left: [[], []], got: [null, null], deadline: 0, timer: null };
   room.seats.forEach(s => { if (s) s.deck = { figs: [], plates: [] }; }); draftRound(room);
@@ -141,7 +142,7 @@ function draftEvoSet(room, seat, choice) {
 }
 function startGame(room) {
   const decks = room.seats.map(s => s.deck); const names = room.seats.map(s => s.name);
-  room.game = E.newGame(decks, names, undefined, { bots: room.seats.map(s => s.bot), randomStart: true, crazy: !!room.crazy, board: room.mini ? 'mini' : 'classic' }); room.lastTick = Date.now();
+  room.game = E.newGame(decks, names, undefined, { bots: room.seats.map(s => s.bot), randomStart: true, crazy: !!room.crazy, board: room.mini ? 'mini' : 'classic', teamSize: room.mini ? MINI_TEAM : 6 }); room.lastTick = Date.now();
   room.seats.forEach((s, i) => send(s.ws, { t: 'start', seat: i }));
   pushState(room); botMaybe(room);
 }

@@ -179,6 +179,12 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.103 — Mini Arena plays with 4 Pokémon; board comparison
+
+- **Changed:** Mini Arena (free play, bot, and Collection PvP) now uses only the **first 4 Pokémon** of your team (engine option `teamSize`; the other slots are ignored, plates unchanged).
+- **Boards compared** (120 bot-vs-bot games each, avg turns / seat-0 win rate / KOs per game): Classic 8.2 / 49 % / 3.5 · Mini 6 Pokémon 16.4 / 48 % / 9.5 · **Mini 4 Pokémon 9.2 / 50 % / 3.8** · Mini 3 Pokémon 6.4 / 53 % / 2.2. Three extra candidate grids exist in `lib/board.js` but are not offered in the UI: `mini_s` (3×4: 4 Pokémon 6.8 turns / 52 %), `mini_w` (5×4: 5.0 / 48 %) and `mini_t` (5×5: 6.0 / 56 %). Mini with 4 Pokémon matched the classic game length and was the most balanced, so it is the one in the game.
+- Tests: mini 170 (checks teams of 3 and 4 and every candidate board).
+
 ## v10.102 — Eevee no longer evolves on its own; Mini Arena in Collection PvP
 
 - **Fixed:** Eevee (Spontaneous Evolution / Bright Arrow: "may evolve when it moves from the P.C. to the bench") evolved automatically, into a random form if none was chosen. It now only becomes *ready to evolve* (log line + the normal Evolve button), so the player decides when, and it uses the form chosen in the team builder / draft (a default is queued if none was chosen). Other "may evolve" cards were checked: only the Knock-Out variant (evolve instead of going to the P.C.) still triggers by itself.

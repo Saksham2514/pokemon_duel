@@ -20,7 +20,7 @@ let fin = 0, exc = 0, n = 120, mixed = 0;
 for (let i = 0; i < n; i++) {
   const board = i % 4 === 3 ? 'classic' : 'mini'; let g;
   try {
-    g = E.newGame([mk(), mk()], ['A', 'B'], i + 1, { board, randomStart: true, crazy: i % 5 === 0, bots: [true, true] }); ok(g.board === board, 'game remembers its board');
+    const ts = board === 'mini' ? (i % 2 ? 4 : 3) : 6; g = E.newGame([mk(), mk()], ['A', 'B'], i + 1, { board, teamSize: ts, randomStart: true, crazy: i % 5 === 0, bots: [true, true] }); ok(g.board === board && Object.values(g.figs).filter(f => f.owner === 0).length === ts && Object.values(g.figs).filter(f => f.owner === 1).length === ts, 'game remembers its board and plays with ' + ts + ' Pokémon per side');
     for (let st = 0; st < 400 && !g.over; st++) {
       const seat = g.phase === 'choose' ? g.pending.task.seat : g.cur; const v = E.view(g, seat); if (v.board !== board) mixed++;
       const a = bot.botAct(g, seat, rnd, 0.4, null); if (!a) { E.apply(g, seat, { t: 'pass' }); continue; } const r = E.apply(g, seat, a); if (r && r.error) E.apply(g, seat, { t: 'pass' });
