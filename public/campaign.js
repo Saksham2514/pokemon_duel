@@ -127,6 +127,16 @@
   const owns = () => EvoUI.setOwns(k => !!(S && S.plates && S.plates[k]));
   const deckOk = d => d && d.figs.length === 6 && deckIds(d).every(i => S.owned[i]) && (() => { const need = {}; deckIds(d).forEach(i => (need[i] = (need[i] || 0) + 1)); return Object.keys(need).every(i => need[i] <= S.owned[i]); })();
   const plateCost = d => d.plates.reduce((a, k) => a + PL[k].cost, 0);
+  // Mega plates are not in the normal plate lists (the 💎 Mega button under a team slot uses them), so list the ones you own and what each still needs.
+  function megaPlateList() {
+    const own = megaKeys().filter(k => S.plates[k]); const wrap = el('div', { class: 'megalist' });
+    if (!own.length) { wrap.append(el('div', { class: 'small muted' }, '💎 You own no Mega plates yet. They come only from the Gem Shop “Plate Unlock” (about a 10% chance per unlock).')); return wrap; }
+    wrap.append(el('div', { class: 'small' }, '💎 Mega plates you own (' + own.length + '/' + megaKeys().length + '). Put the base Pokémon in a slot, then press 💎 Mega under it:'));
+    own.forEach(k => { const name = PL[k].mega; const megaFigs = Object.keys(S.owned).map(Number).filter(i => fig(i) && fig(i).name.replace(/^Shiny /, '') === name); const hasMega = megaFigs.length > 0;
+      const bases = Object.keys(S.owned).map(Number).filter(i => fig(i) && megaFigs.some(m => EvoUI.canMega(fig(i).name, fig(m).name))); const hasBase = bases.length > 0;
+      wrap.append(el('div', { class: 'small', style: 'padding:2px 0' }, '💎 ' + name + ' — ', el('span', { style: 'color:' + (hasMega ? '#6ee7a0' : '#f59e8b') }, hasMega ? 'Mega Pokémon ✓' : 'Mega Pokémon missing (win it from a chest)'), ' · ', el('span', { style: 'color:' + (hasBase ? '#6ee7a0' : '#f59e8b') }, hasBase ? 'base form ✓' : 'base form missing'))); });
+    return wrap;
+  }
   function canAdd(d, id) {
     if (fig(id) && EvoUI.isMega(fig(id).name)) return false;   // Megas are added through their base form (💎 button)
     if (d.figs.length >= 6 || !S.owned[id]) return false;
@@ -311,6 +321,7 @@
     const slots = el('div', { class: 'slots' }); owns(); EvoUI.norm(d);
     for (let i = 0; i < 6; i++) { const id = d.figs[i]; const s = el('div', { class: 'slot', onclick: () => { if (id) { EvoUI.removeSlot(d, i); save(); render(); } } }); if (id) { s.append(img(fig(id)), fig(id).name); s.onmouseenter = () => infoCard($c('campInfo'), fig(id)); } else s.append('Empty'); slots.append(el('div', { class: 'slotwrap' }, s, EvoUI.extras(d, i, xid => ownFree(d, xid), () => { save(); render(); }))); }
     const pl = el('div', { class: 'plates' });
+    const megaInfo = megaPlateList();
     d.plates = d.plates.filter(k => S.plates[k]);
     for (const k of Object.keys(PL).filter(k => !PL[k].need)) { const Pp = PL[k]; const on = d.plates.includes(k); const lock = !S.plates[k]; pl.append(el('div', { class: 'plate' + (on ? ' on' : '') + (lock ? ' locked' : ''), title: lock ? 'Locked – buy it in the Shop, or win it from bosses and chests.' : Pp.text, onclick: () => { if (lock) return; if (on) d.plates = d.plates.filter(x => x !== k); else if (plateCost(d) + Pp.cost <= 6) d.plates.push(k); save(); render(); } }, el('span', { class: 'dot', style: 'background:' + (COL[Pp.color] || '#f78fb3') }), Pp.name, el('span', { class: 'muted' }, ' ' + Pp.cost), lock ? el('span', { class: 'lock' }, ' 🔒') : '', el('div', { class: 'small muted' }, Pp.text))); }
     const g = el('div', { class: 'figgrid' });
@@ -322,7 +333,7 @@
         el('button', { class: 'ghost', onclick: () => { S.active = editDeck; save(); render(); } }, S.active === editDeck ? '★ Active' : 'Set active'), ' ',
         S.decks.length > 1 ? el('button', { class: 'ghost', onclick: () => { if (confirm('Delete this deck?')) { S.decks.splice(editDeck, 1); S.active = 0; editDeck = 0; save(); render(); } } }, 'Delete') : '',
         el('h4', {}, `Team (${d.figs.length}/6)`), slots, el('div', { class: 'hint', style: 'font-size:12px;opacity:.75;margin:6px 0' }, '✨ Evolutions: if you own the later stages (e.g. Charmeleon, Charizard) a ＋ Evolution button appears under that Pokémon. They do not use team slots. 💎 Mega forms need the Mega Ring plate.'), el('div', { class: 'row' }, el('button', { class: 'ghost', onclick: () => { EvoUI.clear(d); save(); render(); } }, 'Clear'), el('button', { class: 'ghost', onclick: () => { autoFill(d); save(); render(); } }, 'Auto-fill best')),
-        el('h4', {}, `Plates (${plateCost(d)}/6)`), pl, el('div', { class: deckOk(d) ? 'muted' : 'err' }, deckOk(d) ? 'Deck ready.' : 'Needs 6 Pokémon you own.')), el('div', { id: 'campInfo', class: 'card campcard' }))));
+        el('h4', {}, `Plates (${plateCost(d)}/6)`), pl, megaInfo, el('div', { class: deckOk(d) ? 'muted' : 'err' }, deckOk(d) ? 'Deck ready.' : 'Needs 6 Pokémon you own.')), el('div', { id: 'campInfo', class: 'card campcard' }))));
   }
   function autoFill(d) {
     const ids = Object.keys(S.owned).map(Number).filter(i => fig(i)).sort((a, b) => RAR.indexOf(fig(b).rarity) - RAR.indexOf(fig(a).rarity) || fig(b).mp - fig(a).mp);
@@ -352,7 +363,7 @@
       pb.append(el('div', { class: 'pb' + (own ? ' own' : ''), style: '--pc:' + (COL[Pp.color] || '#f78fb3') }, el('b', {}, Pp.name), el('span', { class: 'muted' }, ' · ' + Pp.color + ' · cost ' + Pp.cost), el('div', { class: 'small muted' }, Pp.text),
         own ? el('div', { class: 'small' }, '✓ Owned') : el('button', { class: 'buy', disabled: S.coins >= pr ? null : '', onclick: () => { if (S.coins < pr) return; S.coins -= pr; S.plates[k] = 1; save(); render(); } }, '🪙' + pr))); });
     pb.querySelectorAll('button').forEach(b => { if (b.getAttribute('disabled') === null) b.removeAttribute('disabled'); });
-    body.append(el('div', { class: 'collgrid' }, el('div', {}, el('h4', {}, 'Chests'), chests, el('h4', {}, `Plates (${Object.keys(S.plates).filter(k => PL[k] && !PL[k].need).length}/${Object.keys(PL).filter(k => !PL[k].need).length} owned · 💎 Mega ${megaKeys().filter(k => S.plates[k]).length}/${megaKeys().length})`), el('div', { class: 'small muted' }, 'Plates are one-use boosts you take into a duel (6 plate-points per deck). Buy them here, or win them from chapter bosses, chests and the Tower.'), pb, el('h4', {}, 'Today\'s stock ', el('button', { class: 'ghost', disabled: S.gems >= rc ? null : '', title: 'Each restock in the same cycle costs more', onclick: () => { if (S.gems < rc) return; S.gems -= rc; S.restocks++; S.stock = makeStock(); save(); render(); } }, `Restock · 💎${rc}`), el('span', { class: 'small muted' }, ` Free refresh in ${Math.floor(leftMs / 3600e3)}h ${Math.floor(leftMs % 3600e3 / 60e3)}m · price rises with every restock (used ${S.restocks || 0}×)`)), st), el('div', { id: 'campInfo', class: 'card campcard' })));
+    body.append(el('div', { class: 'collgrid' }, el('div', {}, el('h4', {}, 'Chests'), chests, el('h4', {}, `Plates (${Object.keys(S.plates).filter(k => PL[k] && !PL[k].need).length}/${Object.keys(PL).filter(k => !PL[k].need).length} owned · 💎 Mega ${megaKeys().filter(k => S.plates[k]).length}/${megaKeys().length})`), el('div', { class: 'small muted' }, 'Plates are one-use boosts you take into a duel (6 plate-points per deck). Buy them here, or win them from chapter bosses, chests and the Tower.'), pb, megaPlateList(), el('h4', {}, 'Today\'s stock ', el('button', { class: 'ghost', disabled: S.gems >= rc ? null : '', title: 'Each restock in the same cycle costs more', onclick: () => { if (S.gems < rc) return; S.gems -= rc; S.restocks++; S.stock = makeStock(); save(); render(); } }, `Restock · 💎${rc}`), el('span', { class: 'small muted' }, ` Free refresh in ${Math.floor(leftMs / 3600e3)}h ${Math.floor(leftMs % 3600e3 / 60e3)}m · price rises with every restock (used ${S.restocks || 0}×)`)), st), el('div', { id: 'campInfo', class: 'card campcard' })));
   }
 
   const GEM_CHESTS = [

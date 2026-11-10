@@ -179,6 +179,50 @@ Single Pokémon in the shop now cost C 🪙1,000 · UC 3,000 · R 10,000 · EX 2
 - **Illusion** (Zoroark/Zorua): before a battle, a defender that has not yet fought may swap places with an un-battled Illusion holder (bench or field). Humans get a prompt ("Illusion! … or fight normally"), bots decide randomly.
 - 18 new automated checks (test/abilities.js now 98).
 
+## v10.101 — Spark Noise
+
+- **Implemented:** Vikavolt's Spark Noise. When it moves from the bench to the field, every Pokémon on the opponent's bench spins; each one that spins a Purple Attack gains Wait 1 (bench spins appear in the log). New tests (abilities now 183).
+- **Note:** the card doesn't say how much Wait; it is read as Wait 1.
+
+## v10.100 — Mini Arena mode + "no fight" explained
+
+- **New mode — Mini Arena** (🔷 buttons in Free Play: *Mini Arena* for PvP queue, *Mini Arena vs bot*): a compact 3-wide board (13 route points + 2 goals, entry points on the corners next to each goal). Everything is close, so surrounds, goal blocks and first strikes decide the game. It uses your own team, matches only with other Mini Arena players, and gives no chests or ranking. The engine now supports several boards (`lib/board.js`: `BOARDS`, `use()`); every game remembers its board (`g.board`) and the client draws whichever board the game uses. Bot-vs-bot tests: average game ≈ 17 turns on Mini vs ≈ 9 on Classic; seat balance 43 % / 56 % over 150 games (small sample).
+- **Fixed:** an attack was offered in place (and after a move) next to a Pinsir, whose King Spike stops adjacent opposing Pokémon from tagging/being tagged, so the turn silently ended with no fight. The in-place attack is no longer offered there, and whenever a move ends next to an enemy without a fight the log now says why (King Spike or Truant).
+- **Fixed:** the log said "attacks with" for ordinary moves; it now says "moves".
+- Tests: new `test/mini.js` (143 checks: board sanity + 120 bot games on both boards) and `test/mini_e2e.js` (7, through the real server); abilities now includes King Spike checks.
+
+## v10.99 — Draft evolution choice + Crazy "Switch Sides" goal block
+
+- **Draft:** after the third pick you now see your final six (3 picks + the 3 your opponent left) and choose each Pokémon's evolutions and an optional Mega, e.g. which Eevee evolution. A random choice is pre-filled; confirm it or change it (45 s, then the pre-filled choice is locked in; bots confirm automatically). The server validates the choice like a normal deck. Your own six are revealed to you at this step; your opponent's six stay hidden.
+- **Crazy mode:** Switch Sides (Pokémon trading teams) now blocks both goals for the round, like Position Swap, so traded Pokémon can't walk into a goal straight away.
+- Tests: draft_flow now covers the evolution step (17); abilities 179.
+
+## v10.98 — Photon Geyser
+
+- **Implemented:** Photon Geyser (all six Necrozma forms) now attaches a Photon marker. The marked Pokémon's Ability is nullified while it stays on the field; the marker is removed when it leaves the field and shows as a ✨ badge. A Necrozma that changed form may instead pick an opposing Pokémon within X steps (X = Pokémon in the Ultra Space, at least 1). Bots pick the strongest candidate. New tests (abilities now 178).
+- **Note:** the card text's "X=1 steps" is garbled; it is read as "X steps, at least 1". Only opposing Pokémon are offered as targets.
+
+## v10.97 — Mutual surround
+
+- **Fixed:** when one move left both an enemy and the mover's own Pokémon surrounded, only one was knocked out: the check handled one side first, and removing that Pokémon freed the other. Both sides are now judged at the same moment and every surrounded Pokémon is knocked out. A normal single surround behaves as before. 4 new checks (abilities now 172).
+
+## v10.96 — Stealth Hit / Flying Blow jump
+
+- **Fixed:** “This Pokémon can jump over its battle opponent and land 1 step away” (Sceptile, Lycanroc Midnight Form – Stealth Hit; Golisopod – Flying Blow) offered any point 1 step from the attacker, including a step *back*. It now offers only points next to the opponent on the far side of it (falls back to any point next to the opponent if the far side is blocked). The 1-2 step jumps (Rayquaza, Swellow, Dragonite, Celesteela) and the “surrounding point” jumps (Skarmory, Flygon, Garchomp) are unchanged. 1 new test (abilities now 169).
+
+## v10.95 — Emergent Evolution
+
+- **Implemented:** *Emergent Evolution – Restored Pokémon* (Omanyte, Tyrunt, Amaura): after battling they may evolve if they are still on the field, win or not (other Pokémon still have to win). The log shows “battled and can evolve!”. 3 new checks in test/evolution.js (now 51).
+- v10.94 (also in this build): all plates are visible in a match (wrapped grid instead of a sideways-scrolling strip).
+
+## v10.94 — All plates visible in a match
+
+- **Fixed:** on phones the plates you can use in a duel sat in one sideways-scrolling strip (only ~3 fit, no hint to scroll), so plates such as Retreat and Goal Block looked missing. They now wrap into a grid (3 per line on a phone, auto-fill on desktop) with names always shown. Checked with a 6-plate campaign deck at 360, 390, 412, 768 and 1366 px.
+
+## v10.93 — Mega plates visible in the campaign
+
+- Mega plates are not part of the normal plate lists (they are used through the 💎 Mega button under a team slot), so after a Plate Unlock that dropped one, nothing showed it. The campaign **Decks** tab and the **Shop** now list the Mega plates you own, with what each still needs (the Mega Pokémon itself, and a base form in your collection), or a hint on how to get them if you own none.
+
 ## v10.92 — Store the pictures in the repo
 
 - `node tools/fetch_pics.js` (run it on your own computer, it needs the picture host) downloads every Pokémon picture into `pics/<id>.jpg`. Commit that folder (~593 files). The server serves them from there first (immutable caching, no network at all), then the runtime cache (`data/pics`), then the upstream site, then a plain redirect. Re-running the script skips files that already exist.

@@ -1,7 +1,7 @@
 'use strict';
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
-const E = require('./lib/engine'); const { FIGS, LIST } = require('./lib/figures'); const { PLATES } = require('./lib/plates');
+const E = require('./lib/engine'); const { FIGS, LIST } = require('./lib/figures'); const { PLATES, megaPlateKey } = require('./lib/plates');
 const DB = require('./lib/db');
 const B = require('./lib/board'); const DR = require('./lib/draft'); const { botDeck, randomDeck, autoEvo, botAct, botSearch } = require('./lib/bot');
 
@@ -12,7 +12,8 @@ const PUB = path.join(__dirname, 'public');
 const figPayload = JSON.stringify({
   figures: LIST.map(f => ({ id: f.id, name: f.name, rarity: f.rarity, mp: f.mp, cost: f.cost, types: f.types, ability: f.ability, abilityName: f.abilityName, picture: '/pic/' + f.id + '.jpg', active: Object.keys(f.flags).concat([...new Set(f.rules.map(r => r.k))]), segs: f.segs.map(s => ({ n: s.name, c: s.color, s: s.size, d: s.dmg, t: s.notes, ok: s.simulated })), z: f.zsegs.map(s => ({ n: s.name, c: s.color, s: s.size, d: s.dmg, t: s.notes, ok: s.simulated })) })),
   evo: { next: require('./lib/evolution').NEXT },
-  plates: PLATES, board: { points: B.POINTS, xy: B.XY, adj: B.ADJ, entry: B.ENTRY, goals: B.GOALS },
+  plates: PLATES, board: { points: B.BOARDS.classic.POINTS, xy: B.BOARDS.classic.XY, adj: B.BOARDS.classic.ADJ, entry: B.BOARDS.classic.ENTRY, goals: B.BOARDS.classic.GOALS },
+  boards: Object.fromEntries(Object.entries(B.BOARDS).map(([k, b]) => [k, { label: b.label, points: b.POINTS, xy: b.XY, adj: b.ADJ, entry: b.ENTRY, goals: b.GOALS }])),
 });
 
 
@@ -110,13 +111,37 @@ function draftPick(room, seat, idx) {
   if (d.got[0] == null || d.got[1] == null) return;
   clearTimeout(d.timer); d.round++;
   if (d.round < DR.ROUNDS) return setTimeout(() => draftRound(room), 600);
-  room.seats.forEach((s2, i) => { s2.deck = { figs: d.picks[i].concat(d.left[1 - i]), plates: DR.plateSet() }; autoEvo(s2.deck, Math.random, Math.random() < 0.6); });
-  room.seats.forEach((s2, i) => { if (s2.ws) send(s2.ws, { t: 'draftDone', mine: d.picks[i], received: d.left[1 - i].length, plates: s2.deck.plates }); });
-  room.dr = null; setTimeout(() => { if (!room.game && !room.cancelled) startGame(room); }, 4500);
+  // all six cards are known: every player now chooses evolutions / Megas for their own final team (a random default is pre-filled)
+  d.phase = 'evo'; d.evoOk = [false, false]; d.evoDeadline = Date.now() + EVO_SECS * 1000;
+  room.seats.forEach((s2, i) => { s2.deck = { figs: d.picks[i].concat(d.left[1 - i]), plates: DR.plateSet() }; autoEvo(s2.deck, Math.random, Math.random() < 0.6); s2.basePlates = s2.deck.plates.filter(k => !(PLATES[k] && PLATES[k].need === 'mega')); });
+  room.seats.forEach((s2, i) => { if (s2.ws) send(s2.ws, evoMsg(room, i)); });
+  room.seats.forEach((s2, i) => { if (s2 && s2.bot) setTimeout(() => { if (room.dr === d) draftEvoSet(room, i, null); }, 1200 + Math.random() * 1500); });
+  d.timer = setTimeout(() => { if (room.dr !== d) return; for (const i of [0, 1]) if (!d.evoOk[i]) draftEvoSet(room, i, null); }, EVO_SECS * 1000 + 500);
+}
+const EVO_SECS = 45;
+function evoMsg(room, i) { const d = room.dr, dk = room.seats[i].deck; return { t: 'draftEvo', figs: dk.figs, evo: dk.evo, mega: dk.mega, plates: dk.plates, deadline: d.evoDeadline, done: !!d.evoOk[i], received: d.left[1 - i].length }; }
+// choice === null keeps the pre-filled default (timeout / bot); otherwise {evo, mega} is validated like any deck
+function draftEvoSet(room, seat, choice) {
+  const d = room.dr; if (!d || d.phase !== 'evo' || d.evoOk[seat]) return;
+  const s2 = room.seats[seat]; if (!s2) return;
+  if (choice) {
+    const evo = Array.isArray(choice.evo) ? choice.evo.slice(0, 6).map(c => Array.isArray(c) ? c.map(Number) : []) : [], mega = Array.isArray(choice.mega) ? choice.mega.slice(0, 6).map(Number) : [];
+    while (evo.length < 6) evo.push([]); while (mega.length < 6) mega.push(0);
+    const plates = s2.basePlates.slice(); for (const m of mega) if (m && FIGS[m]) { const k = megaPlateKey(FIGS[m].name); if (!plates.includes(k)) plates.push(k); }
+    const cand = { figs: s2.deck.figs, evo, mega: mega.map(m => m || 0), plates }; const err = E.validateDeck(cand);
+    if (err) { if (s2.ws) send(s2.ws, { t: 'draftEvoErr', error: err }); return; }
+    s2.deck = cand;
+  }
+  d.evoOk[seat] = true; if (s2.ws) send(s2.ws, { t: 'draftEvoWait' });
+  const o = room.seats[1 - seat]; if (o && o.ws) send(o.ws, { t: 'draftEvoOpp' });
+  if (!d.evoOk[0] || !d.evoOk[1]) return;
+  clearTimeout(d.timer);
+  room.seats.forEach((s3, i) => { if (s3.ws) send(s3.ws, { t: 'draftDone', mine: d.picks[i], received: d.left[1 - i].length, plates: s3.deck.plates }); });
+  room.dr = null; setTimeout(() => { if (!room.game && !room.cancelled) startGame(room); }, 3000);
 }
 function startGame(room) {
   const decks = room.seats.map(s => s.deck); const names = room.seats.map(s => s.name);
-  room.game = E.newGame(decks, names, undefined, { bots: room.seats.map(s => s.bot), randomStart: true, crazy: !!room.crazy }); room.lastTick = Date.now();
+  room.game = E.newGame(decks, names, undefined, { bots: room.seats.map(s => s.bot), randomStart: true, crazy: !!room.crazy, board: room.mini ? 'mini' : 'classic' }); room.lastTick = Date.now();
   room.seats.forEach((s, i) => send(s.ws, { t: 'start', seat: i }));
   pushState(room); botMaybe(room);
 }
@@ -168,13 +193,13 @@ wss.on('connection', ws => {
     const c = ws.ctx;
     const mkSeat = (name, deck, bot, skill) => ({ ws: bot ? null : ws, name: String(name || 'Trainer').slice(0, 24), deck, bot: !!bot, skill: skill == null ? 0.4 : skill, token: Math.random().toString(36).slice(2) });
     if (m.t === 'quick') {
-      const rnd = !!m.random, dft = !!m.draft, cz = !!m.crazy; if (rnd || dft) { m.deck = randomDeck(Math.random); m.owned = false; }
+      const rnd = !!m.random, dft = !!m.draft, cz = !!m.crazy, mn = !!m.mini; if (rnd || dft) { m.deck = randomDeck(Math.random); m.owned = false; }
       const err = E.validateDeck(m.deck); if (err) return send(ws, { t: 'err', msg: err });
       const name = String(m.name || 'Trainer').slice(0, 24);
       let own = null; if (m.owned) { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
-      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.random === rnd && !!r.draft === dft && !!r.crazy === cz && (cz ? true : !!r.owned === !!own) && (!own || !r.seats[0].user || r.seats[0].user !== own.user)) { q = r; break; }
+      let q = null; for (const r of rooms.values()) if (r.open && !r.seats[1] && !r.game && r.seats[0] && r.seats[0].ws && r.seats[0].ws !== ws && !!r.random === rnd && !!r.draft === dft && !!r.crazy === cz && !!r.mini === mn && (cz || mn ? true : !!r.owned === !!own) && (!own || !r.seats[0].user || r.seats[0].user !== own.user)) { q = r; break; }
       if (q) { clearTimeout(q.qTimer); q.open = false; q.seats[1] = mkSeat(own ? own.user : name, m.deck); if (own) q.seats[1].user = own.user; c.room = q; c.seat = 1; send(ws, { t: 'room', code: q.code, seat: 1, token: q.seats[1].token }); if (q.draft) startDraft(q); else startGame(q); return; }
-      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true, random: rnd, draft: dft, crazy: cz }; if (own) { room.owned = !cz; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
+      const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : name, m.deck), null], game: null, open: true, random: rnd, draft: dft, crazy: cz, mini: mn }; if (own) { room.owned = !cz && !mn; room.seats[0].user = own.user; } rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token }); send(ws, { t: 'waiting', code, quick: true });
       room.qTimer = setTimeout(() => {
         if (!room.open || room.seats[1] || room.game) return; room.open = false; room.owned = false; /* bot games never count for the ladder */
@@ -188,6 +213,7 @@ wss.on('connection', ws => {
       const code = rid(); const room = { code, seats: [mkSeat(String(m.name || 'Trainer').slice(0, 24), randomDeck(Math.random)), mkSeat('Rival Bot', randomDeck(Math.random), true, 0.85)], game: null, draft: true }; rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token }); startDraft(room); return;
     }
+    if (m.t === 'draftEvoSet') { const room = c.room; if (room && room.dr) draftEvoSet(room, c.seat, { evo: m.evo, mega: m.mega }); return; }
     if (m.t === 'draftPick') { const room = c.room; if (room && room.dr) draftPick(room, c.seat, +m.idx); return; }
     if (m.t === 'leaveDraft') { const r = c.room; if (r && !r.game) { r.cancelled = true; if (r.dr) { clearTimeout(r.dr.timer); r.dr = null; } clearTimeout(r.qTimer); const o = r.seats[1 - c.seat]; if (o && o.ws && o.ws !== ws) send(o.ws, { t: 'draftLeft', name: (r.seats[c.seat] || {}).name || 'Your opponent' }); rooms.delete(r.code); c.room = null; } return; }
     if (m.t === 'cancelq') { const r = c.room; if (r && r.open && !r.game) { clearTimeout(r.qTimer); r.open = false; rooms.delete(r.code); c.room = null; } return; }
@@ -196,6 +222,7 @@ wss.on('connection', ws => {
       if (m.t === 'bot' && m.boss && Array.isArray(m.boss.allow) && m.boss.allow.length && m.deck && Array.isArray(m.deck.figs) && m.deck.figs.some(i => !(FIGS[i] && FIGS[i].types.some(t => m.boss.allow.includes(t))))) return send(ws, { t: 'err', msg: 'This region only allows ' + m.boss.allow.join(' / ') + ' types.' }); // region type restriction is enforced server-side too
       let own = null; if (m.owned && m.t === 'create') { own = checkOwned(m.auth, m.deck); if (own.error) return send(ws, { t: 'err', msg: own.error }); }
       const code = rid(); const room = { code, seats: [mkSeat(own ? own.user : m.name, m.deck), null], game: null }; if (own) { room.owned = true; room.seats[0].user = own.user; }
+      if (m.t === 'bot' && m.mini && !m.boss) room.mini = true;
       rooms.set(code, room); c.room = room; c.seat = 0;
       send(ws, { t: 'room', code, seat: 0, token: room.seats[0].token, bot: m.t === 'bot' });
       if (m.t === 'bot') { const cu = DB.who(m.auth); room.campUser = cu && m.boss ? cu : null; room.campDone = false; room.campStage = String((m.boss && m.boss.stage) || ''); room.campFee = Math.max(0, Math.min(5000, +(m.boss && m.boss.fee) || 0)); if (room.campUser) { try { DB.setResult(room.campUser, { win: false, stage: room.campStage, fee: room.campFee, pending: true }); } catch (e) { } } const bs = m.boss && m.boss.deck && !E.validateDeck(m.boss.deck) ? m.boss : null; room.boss = bs ? { deck: bs.deck, skill: Math.max(0, Math.min(1, +bs.skill || 0)), name: String(bs.name || 'Boss') } : null; room.seats[1] = room.boss ? mkSeat(room.boss.name, room.boss.deck, true, room.boss.skill) : mkSeat('Rival Bot', randomDeck(Math.random), true, 0.85); if (Math.random() < 0.5) { room.seats.reverse(); room.seats.forEach((s, i) => { if (!s.bot) { c.seat = i; send(ws, { t: 'room', code, seat: i, token: s.token, bot: true }); } }); } startGame(room); }
@@ -212,13 +239,13 @@ wss.on('connection', ws => {
       const room = rooms.get(String(m.code || '').toUpperCase()); if (!room) return send(ws, { t: 'err', msg: 'Room expired.', fatal: true });
       const i = room.seats.findIndex(s => s && s.token === m.token); if (i < 0) return send(ws, { t: 'err', msg: 'Bad token.', fatal: true });
       room.seats[i].ws = ws; c.room = room; c.seat = i; send(ws, { t: 'room', code: room.code, seat: i, token: m.token });
-      if (room.game) { send(ws, { t: 'start', seat: i }); pushState(room); } else if (room.dr) { const d = room.dr; send(ws, { t: 'draft', round: d.round, total: DR.ROUNDS, rarity: d.rar[d.round], options: d.offers[i][d.round], picks: d.picks[i], oppPicks: d.picks[1 - i].length, deadline: d.deadline, picked: d.got[i] != null }); } else send(ws, { t: 'waiting', code: room.code });
+      if (room.game) { send(ws, { t: 'start', seat: i }); pushState(room); } else if (room.dr && room.dr.phase === 'evo') { send(ws, evoMsg(room, i)); } else if (room.dr) { const d = room.dr; send(ws, { t: 'draft', round: d.round, total: DR.ROUNDS, rarity: d.rar[d.round], options: d.offers[i][d.round], picks: d.picks[i], oppPicks: d.picks[1 - i].length, deadline: d.deadline, picked: d.got[i] != null }); } else send(ws, { t: 'waiting', code: room.code });
     } else if (m.t === 'act') {
       const room = c.room; if (!room || !room.game) return;
       const r = doAct(room, c.seat, m.a); if (r && r.error) send(ws, { t: 'err', msg: r.error });
     } else if (m.t === 'rematch') {
       const room = c.room; if (!room || !room.seats[0] || !room.seats[1]) return; const s = room.seats[c.seat];
-      const fixedMode = !!(room.draft || room.random || room.crazy); // queue modes keep their own team: the client's builder deck is not what was played
+      const fixedMode = !!(room.draft || room.random || room.crazy || room.mini); // queue modes keep their own team: the client's builder deck is not what was played
       let deck = m.random && !room.owned ? randomDeck(Math.random) : fixedMode ? s.deck : (m.deck && !E.validateDeck(m.deck) && (!room.owned || !checkOwned(m.auth, m.deck).error) ? m.deck : s.deck); s.nextDeck = deck;
       const humans = room.seats.filter(x => !x.bot);
       if (humans.length === 1) { room.seats.forEach(x => { if (x.bot) x.nextDeck = room.boss ? room.boss.deck : randomDeck(Math.random); }); }

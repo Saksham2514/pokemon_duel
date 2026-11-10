@@ -12,7 +12,18 @@ const conn = () => new Promise(res => { const ws = new WebSocket('ws://localhost
     for (const [i, c] of [a, b].entries()) { const m = c.msgs.filter(x => x.t === 'draft').pop(); ok(m && m.round === r && m.total === 3 && m.options.length === 2, 'round ' + (r + 1) + ' of 3, two options for ' + 'AB'[i]); offers[i].push(m.options); picked[i].push(r % 2); c.ws.send(JSON.stringify({ t: 'draftPick', idx: r % 2 })); }
     await wait(1400); rounds++;
   }
-  await wait(800);
+  await wait(900);
+  const ea = a.msgs.find(x => x.t === 'draftEvo'), eb = b.msgs.find(x => x.t === 'draftEvo');
+  ok(ea && eb && ea.figs.length === 6 && eb.figs.length === 6 && ea.evo.length === 6, 'after the 3rd pick each player gets a pre-filled evolution step with their final six');
+  const { FIGS: FG } = require('../lib/figures'), EVO = require('../lib/evolution');
+  ok(JSON.stringify(ea.figs.slice(0, 3)) === JSON.stringify(offers[0].map((o, r) => o[picked[0][r]])), 'the evolution step lists A\'s picks first');
+  a.ws.send(JSON.stringify({ t: 'draftEvoSet', evo: [[999999], [], [], [], [], []], mega: [0, 0, 0, 0, 0, 0] })); await wait(300);
+  ok(a.msgs.some(x => x.t === 'draftEvoErr'), 'an illegal evolution choice is rejected');
+  const choice = ea.figs.map(id => { const nx = EVO.NEXT[EVO.species(FG[id].name)] || []; const e = nx.map(n => Object.values(FG).find(f => f.name === n)).filter(Boolean)[0]; return e ? [e.id] : []; });
+  a.ws.send(JSON.stringify({ t: 'draftEvoSet', evo: choice, mega: [0, 0, 0, 0, 0, 0] })); await wait(300);
+  ok(!a.msgs.filter(x => x.t === 'draftEvoErr').slice(1).length && a.msgs.some(x => x.t === 'draftEvoWait'), 'a legal choice is accepted');
+  ok(!a.msgs.some(x => x.t === 'draftDone'), 'the draft waits for the opponent to confirm');
+  b.ws.send(JSON.stringify({ t: 'draftEvoSet', evo: eb.evo, mega: eb.mega })); await wait(900);
   const da = a.msgs.find(x => x.t === 'draftDone'), db = b.msgs.find(x => x.t === 'draftDone'); ok(da && db, 'draft completes after 3 rounds');
   const mineA = offers[0].map((o, r) => o[picked[0][r]]), leftA = offers[0].map((o, r) => o[1 - picked[0][r]]), mineB = offers[1].map((o, r) => o[picked[1][r]]), leftB = offers[1].map((o, r) => o[1 - picked[1][r]]);
   ok(JSON.stringify(da.mine) === JSON.stringify(mineA) && JSON.stringify(db.mine) === JSON.stringify(mineB), 'draftDone reports each player\'s own 3 picks');

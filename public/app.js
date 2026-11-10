@@ -91,6 +91,10 @@ function onMsg(m) {
   else if (m.t === 'draft') { $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); drawDraft(m); }
   else if (m.t === 'draftWait') { drState.picks = m.picks; drawDraftTeam(); drLock('Pick locked in – waiting for your opponent…'); }
   else if (m.t === 'draftOpp') { drState.opp = m.n; $('#drOpp').textContent = 'Opponent has picked ' + m.n + ' of ' + DRN + '.'; }
+  else if (m.t === 'draftEvo') { drEvo(m); }
+  else if (m.t === 'draftEvoErr') { toast(m.error); const b = $('#drEvoOk'); if (b) b.disabled = false; }
+  else if (m.t === 'draftEvoWait') { const b = $('#drEvoOk'); if (b) { b.disabled = true; b.textContent = 'Locked in – waiting for your opponent…'; } }
+  else if (m.t === 'draftEvoOpp') { const o = $('#drEvoOpp'); if (o) o.textContent = 'Your opponent has locked in their evolutions.'; }
   else if (m.t === 'draftDone') { drDone(m); }
   else if (m.t === 'state') { stateQ.push(m); drain(); }
   else if (m.t === 'err') { if (window.pvpMode && Camp.pvpMsg(m.msg, true)) return; toast(m.msg); if (m.fatal) { sessionStorage.removeItem('duel_session'); } $('#deckErr').textContent = m.msg; }
@@ -124,6 +128,8 @@ function initUI() {
   $('#goQuick').onclick = () => { show('deck'); if (deck.figs.length === 6) $('#btnQuick').click(); else toast('Build a team of 6 first, then press Quick match.'); };
   $('#btnDraft').onclick = () => { window.pvpMode = false; send({ t: 'quick', draft: true, name: $('#name').value }); };
   $('#btnDraftBot').onclick = () => { window.pvpMode = false; send({ t: 'draftBot', name: $('#name').value }); };
+  if ($('#btnMini')) $('#btnMini').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', mini: true, deck, name: $('#name').value }); };
+  if ($('#btnMiniBot')) $('#btnMiniBot').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'bot', mini: true, deck, name: $('#name').value }); };
   $('#btnCrazy').onclick = () => { window.pvpMode = false; saveDeck(); send({ t: 'quick', crazy: true, deck, name: $('#name').value }); };
   $('#btnCrazyDraft').onclick = () => { window.pvpMode = false; send({ t: 'quick', crazy: true, draft: true, name: $('#name').value }); };
   $('#btnRandQ').onclick = () => { window.pvpMode = false; send({ t: 'quick', random: true, name: $('#name').value }); };
@@ -210,6 +216,7 @@ function badgeList(f) {
   if (f.dis) L.push({ k: 'dis', icon: '🎭', col: '#8e6bbf', tip: 'Disguise marker – the next battle knockout is ignored (the marker is removed instead).' });
   if (f.tn) L.push({ k: 'tn', icon: '😤', col: '#c0392b', tip: 'Taunted – Purple and Blue spins are shifted to the next result until the taunt ends.' });
   if (f.sym) L.push({ k: 'sym', icon: '🧬', col: '#1f9d8b', tip: 'Symbiont marker – only the opposing player can move this Pokémon (MP move). Removed by tagging.' });
+  if (f.photon) L.push({ k: 'photon', icon: '✨', col: '#e9c13a', tip: 'Photon marker – this Pokémon’s Ability is nullified while it stays on the field.' });
   return L;
 }
 
@@ -258,6 +265,7 @@ const LOOPS = [['.dest', 1200], ['#hud .hs.on', 2000], ['#hud .hs.on .hav', 1400
 function syncLoops() { const t = performance.now(); for (const [sel, per] of LOOPS) document.querySelectorAll(sel).forEach(e => { e.style.animationDelay = '-' + (t % per).toFixed(0) + 'ms'; }); }
 function render() {
   if (!V || !BOARD) return;
+  if (DATA && DATA.boards && DATA.boards[V.board || 'classic']) BOARD = DATA.boards[V.board || 'classic'];
   preloadFigs();
   if (!V.over && lastCurSeen !== V.turn + ':' + V.cur) { const first = lastCurSeen === null; lastCurSeen = V.turn + ':' + V.cur; if (V.cur === V.seat && (V.turn > 1 || V.cur === V.seat)) SFX.play('turn'); if (!first && !introOn) turnFlashWhenIdle(V.turn + ':' + V.cur); }
   if (introPending) { introPending = false; if (V.turn <= 1) vsIntro(); }
@@ -280,7 +288,7 @@ function render() {
 function drawHud(me, opp) {
   let h = $('#hud'); if (!h) { h = el('div', { id: 'hud' }); $('.boardwrap').prepend(h); }
   const side = (i, cls) => { const p = V.players[i]; const won = V.players[1 - i].kos || 0; return el('div', { class: 'hs ' + cls + (V.cur === i && !V.over ? ' on' : '') }, el('div', { class: 'hav' }, (p.name || '?').trim().charAt(0).toUpperCase()), el('div', { class: 'hmid' }, el('div', { class: 'hn' }, p.name + (i === me ? ' (you)' : '')), el('div', { class: 'hko', title: 'Enemy Pokémon you have knocked out' }, '⚔ ', el('b', {}, String(won)), ' KO')), el('div', { class: 'hc' }, p.clock == null ? '–' : fmt(p.clock))); };
-  h.replaceChildren(side(me, 'me'), el('div', { class: 'hturn' }, el('small', {}, 'TURN'), el('b', {}, String(V.turn))), side(opp, 'opp'));
+  h.replaceChildren(side(me, 'me'), el('div', { class: 'hturn' }, el('small', {}, V.board === 'mini' ? 'MINI · TURN' : 'TURN'), el('b', {}, String(V.turn))), side(opp, 'opp'));
 }
 function drawFightPrompt(mine) {
   let p = $('#fightPrompt'); if (p) p.remove();
@@ -328,7 +336,7 @@ function drawSlab(svg, defs) {
     sv('rect', { x: X + 18, y: Y + 18, width: W - 36, height: H - 36, rx: 16, fill: 'none', stroke: '#000', 'stroke-opacity': 0.55, 'stroke-width': 5 }));
   // bench trays + centre line
   [[-98, 70], [680, 70]].forEach(([ty, th]) => svg.append(sv('rect', { x: 14, y: ty + 4, width: 632, height: th, rx: 18, fill: '#000', 'fill-opacity': 0.28, stroke: '#fff', 'stroke-opacity': 0.12, 'stroke-width': 2 })));
-  const mid = PT('I01'); svg.append(sv('line', { x1: -4, y1: mid.y, x2: 664, y2: mid.y, stroke: '#fff', 'stroke-opacity': 0.12, 'stroke-width': 2, 'stroke-dasharray': '4 10' }));
+  const mid = BOARD.xy.I01 ? PT('I01') : { y: (PT('G0').y + PT('G1').y) / 2 }; svg.append(sv('line', { x1: -4, y1: mid.y, x2: 664, y2: mid.y, stroke: '#fff', 'stroke-opacity': 0.12, 'stroke-width': 2, 'stroke-dasharray': '4 10' }));
   // goal pads
   ['G0', 'G1'].forEach(g => { const q = PT(g); const mine = g === BOARD.goals[V.seat]; const top = q.y < 300; const y0 = top ? 8 : q.y - 52;
     svg.append(sv('rect', { x: q.x - 92, y: y0, width: 184, height: 112, rx: 26, fill: `url(#${mine ? 'slPadO' : 'slPadB'})`, stroke: mine ? '#ffb347' : '#53a8ff', 'stroke-opacity': 0.6, 'stroke-width': 3 }), sv('rect', { x: q.x - 92, y: y0, width: 184, height: 112, rx: 26, fill: 'url(#slHaz)' })); });
@@ -364,7 +372,7 @@ function drawBoard() {
   planAnims();
   // The themed background (noise filters, gradients), slab and track lines never change during a game: build them once and only
   // rebuild the pieces/highlights on top. Re-running those SVG filters on every redraw made the whole board blink.
-  const svg = $('#board'); const bkey = curTheme() + '|' + V.seat;
+  const svg = $('#board'); const bkey = curTheme() + '|' + V.seat + '|' + (V.board || 'classic');
   if (svg._key !== bkey) {
     svg.innerHTML = ''; const defs = sv('defs'); svg.append(defs);
   defs.append(
@@ -484,7 +492,7 @@ function drawActions() {
   if (V.legal.preswap && V.legal.preswap.length && !V.moved) a.append(el('div', { class: 'row' }, ...V.legal.preswap.flatMap(ps => ps.with.map(w => { const f = V.figs.find(x => x.uid === ps.uid), o = V.figs.find(x => x.uid === w); return el('button', { class: 'platecard', style: '--pc:#74b9ff', title: ps.kind === 'volt' ? 'Volt Swap: switch with a paralyzed Electric Pokémon; opposing Pokémon on your entry points become paralyzed.' : 'Swap places with this ally before moving.', onclick: () => act({ t: 'preswap', uid: ps.uid, with: w }) }, el('span', { class: 'pc-ic' }, '↔'), el('span', { class: 'pc-nm' }, FIG[f.fid].name + ' ⇄ ' + FIG[o.fid].name)); }))));
   if (V.turn <= 3) a.append(el('div', { class: 'howto' }, el('b', {}, 'How to play: '), '① (optional) use a plate  ② tap one of your Pokémon  ③ tap a glowing point to move. ', el('span', { class: 'swordnote' }, '⚔️ on a point = you can start a battle from there.')));
   if (ui.plate) a.append(el('div', { class: 'notice' }, 'Plate: choose a ' + (ui.plate.step === 'a' ? 'target' : 'bench Pokémon') + ' (highlighted). ', el('button', { onclick: () => { ui.plate = null; render(); } }, 'Cancel')));
-  const row = el('div', { class: 'row' });
+  const row = el('div', { class: 'row platerow' });
   for (const p of me.ownPlates) {
     const Pp = PL[p.key]; const usable = !p.used && V.legal.plates.includes(p.idx) && !V.moved && p.targets && (Pp.target === 'none' || p.targets.a.length > 0);
     const btn = el('button', { class: 'platecard' + (p.used ? ' used' : ''), title: Pp.name + ' – ' + Pp.text, style: '--pc:' + (COL[Pp.color] || '#f78fb3'), onclick: () => { if (Pp.target === 'none') act({ t: 'plate', idx: p.idx }); else { ui.plate = { idx: p.idx, step: 'a' }; ui.sel = null; render(); } } }, el('span', { class: 'pc-ic' }, PICON[p.key] || '🔶'), el('span', { class: 'pc-nm' }, Pp.name), el('span', { class: 'pc-cost' }, '●'.repeat(Pp.cost)));
@@ -627,10 +635,29 @@ function drawDraft(m) {
   if (m.picked) drLock('Pick locked in – waiting for your opponent…');
   drawDraftTeam(); clearInterval(drTimerId); const tick = () => { const s = Math.max(0, Math.ceil((m.deadline - Date.now()) / 1000)); $('#drTimer').textContent = '⏱ ' + s + 's'; $('#drTimer').classList.toggle('low', s <= 7); }; tick(); drTimerId = setInterval(tick, 500);
 }
+
+// Draft step 2: all six cards are known – choose each Pokémon's evolutions / Mega (a random default is pre-filled; the timer locks it in)
+let drEvoDeck = null;
+function drEvo(m) {
+  $('#waitMsg').classList.add('hidden'); $('#btnCancelQ').classList.add('hidden'); show('draft'); drLastKey = null; drSteps(DRN); $('#drHow').classList.add('hidden');
+  $('#drOpts').classList.add('hidden'); $('#drStatus').classList.add('hidden'); $('#drTitle').textContent = '✨ Choose your evolutions'; $('#drSub').textContent = 'Your 6 Pokémon are set. Pick what each one can evolve into (and an optional Mega). A random choice is pre-filled – change it or just confirm.'; $('#drOpp').textContent = '';
+  drEvoDeck = { figs: m.figs.slice(), evo: (m.evo || []).map(c => c.slice()), mega: (m.mega || []).slice(), plates: (m.plates || []).slice() }; EvoUI.norm(drEvoDeck);
+  drState.picks = m.figs.slice(0, DRN); const r = $('#drReveal'); r.classList.remove('hidden');
+  const draw = () => {
+    EvoUI.norm(drEvoDeck); r.innerHTML = ''; r.append(el('h4', {}, 'Your final six (3 picks + ' + (m.received || 3) + ' left by your opponent)'));
+    const grid = el('div', { class: 'drevo' });
+    drEvoDeck.figs.forEach((id, i) => { const f = FIG[id]; grid.append(el('div', { class: 'dcard', style: '--rc:' + DRC[f.rarity] }, el('div', { class: 'dtop' }, img(f), el('div', {}, el('b', {}, f.name), el('div', { class: 'small' }, f.rarity + ' · MP ' + f.mp), el('div', { class: 'small dtypes' }, f.types.join(' / ')))), EvoUI.extras(drEvoDeck, i, () => true, draw))); });
+    r.append(grid, el('div', { class: 'small muted' }, 'Evolving happens in the match after a Pokémon wins a battle. A Mega adds its own plate for free.'));
+    const ok = el('button', { class: 'primary', id: 'drEvoOk', onclick: () => { ok.disabled = true; send({ t: 'draftEvoSet', evo: drEvoDeck.evo, mega: drEvoDeck.mega }); } }, m.done ? 'Locked in – waiting for your opponent…' : '✔ Confirm team'); ok.disabled = !!m.done;
+    r.append(ok, el('div', { class: 'small muted', id: 'drEvoOpp' }, ''));
+  };
+  draw(); drawDraftTeam();
+  clearInterval(drTimerId); const tick = () => { const s = Math.max(0, Math.ceil((m.deadline - Date.now()) / 1000)); $('#drTimer').textContent = '⏱ ' + s + 's'; $('#drTimer').classList.toggle('low', s <= 7); }; tick(); drTimerId = setInterval(tick, 500);
+}
 function drDone(m) {
   drLastKey = null; drSteps(DRN); $('#drHow').classList.add('hidden');
   clearInterval(drTimerId); $('#drTimer').textContent = ''; $('#drOpts').classList.add('hidden'); $('#drStatus').classList.add('hidden'); $('#drTitle').textContent = '🃏 Draft complete!'; $('#drSub').textContent = ''; { let n = 4; $('#drTimer').innerHTML = ''; const c = el('span', { class: 'drcount' }); $('#drTimer').append(c); const tkc = () => { c.textContent = 'Duel starts in ' + n + '…'; if (n-- > 0) drCountT = setTimeout(tkc, 1000); }; clearTimeout(drCountT); tkc(); } drState.picks = m.mine; drawDraftTeam();
-  const r = $('#drReveal'); r.classList.remove('hidden'); r.innerHTML = ''; r.append(el('h4', {}, 'Your 3 picks + ' + (m.received || 3) + ' Pokémon your opponent left'), el('div', { class: 'small muted' }, 'The ' + (m.received || 3) + ' extra Pokémon are revealed when the duel starts. Plates were dealt at random (' + (m.plates || []).map(k => (PL[k] || {}).name || k).join(', ') + ').'));
+  const r = $('#drReveal'); r.classList.remove('hidden'); r.innerHTML = ''; r.append(el('h4', {}, 'Team locked in – good luck!'), el('div', { class: 'small muted' }, 'Plates were dealt at random (' + (m.plates || []).map(k => (PL[k] || {}).name || k).join(', ') + ').'));
 }
 function showEnd() {
   if (endShown) return; endShown = true; const o = $('#endOverlay');

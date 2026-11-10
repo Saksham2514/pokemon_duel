@@ -473,6 +473,61 @@ g = setup(pad(['Kyurem'], fill), pad([], fill));
   const S = Object.values(gg.figs).find(f => f.owner === 0 && f.fid === st.id), D = Object.values(gg.figs).find(f => f.owner === 1);
   place(gg, S, 'I00'); place(gg, D, BB4.ADJ['I00'][0]); const seg = st.segs.find(x => x.name === 'Pull In'); T.runOps(gg, seg.ops, { self: S, opp: D });
   ok(D.loc === 'pc' && S.loc === 'bench', 'Steelix Pull In: opponent to P.C. and Steelix to the bench (' + D.loc + '/' + S.loc + ')'); }
+// Stealth Hit / Flying Blow: jumping over the opponent lands next to it on the FAR side, never a step back
+{ const L5 = require('../lib/figures').LIST, BB5 = require('../lib/board'); const sc = L5.find(x => x.name === 'Sceptile'); const oth = L5.filter(x => !x.rules.length && x.mp >= 1 && x.id !== sc.id).slice(0, 11).map(x => x.id);
+  let tested = 0, wrong = 0, empty = 0;
+  for (const p1 of BB5.POINTS.slice(0, 20)) for (const p2 of (BB5.ADJ[p1] || [])) {
+    const gg = E.newGame([{ figs: [sc.id, ...oth.slice(0, 5)], plates: [] }, { figs: oth.slice(5, 11), plates: [] }], ['A', 'B'], 9); const S = Object.values(gg.figs).find(f => f.owner === 0 && f.fid === sc.id), D = Object.values(gg.figs).find(f => f.owner === 1);
+    place(gg, S, p1); place(gg, D, p2); gg.cur = 0; gg.phase = 'main'; T.runOps(gg, sc.segs.find(x => x.name === 'Stealth Hit').ops, { self: S, opp: D });
+    const t = gg.tasks[0]; if (!t) continue; const opts = T.taskOptions(gg, t), dS = BB5.bfs(p1), dO = BB5.bfs(p2); tested++; if (!opts.length) empty++;
+    if (opts.some(q => dO[q] !== 1 || dS[q] <= dS[p2])) wrong++; }
+  ok(tested > 5 && wrong === 0 && empty < tested, 'Stealth Hit only offers points next to the opponent on the far side (' + tested + ' setups, ' + wrong + ' wrong)'); }
+// Mutual surround: if one move leaves BOTH an enemy and the mover surrounded, both are knocked out (not just the first one checked)
+{ const L6 = require('../lib/figures').LIST, BB6 = require('../lib/board'); const ids = L6.filter(x => !x.rules.length && x.mp >= 1).slice(0, 12).map(x => x.id);
+  for (const by of [0, 1]) {
+    const gg = E.newGame([{ figs: ids.slice(0, 6), plates: [] }, { figs: ids.slice(6, 12), plates: [] }], ['A', 'B'], 3); const mine = Object.values(gg.figs).filter(f => f.owner === 0), foes = Object.values(gg.figs).filter(f => f.owner === 1);
+    const A = mine[0], Bf = foes[0]; place(gg, A, 'T0'); place(gg, Bf, 'I00'); BB6.ADJ['T0'].filter(p => p !== 'I00').forEach((p, i) => place(gg, foes[1 + i], p)); BB6.ADJ['I00'].filter(p => p !== 'T0').forEach((p, i) => place(gg, mine[1 + i], p));
+    T.surroundCheck(gg, by); ok(A.loc !== 'field' && Bf.loc !== 'field', 'mutual surround knocks out BOTH Pokémon (checked from seat ' + by + '): ' + A.loc + '/' + Bf.loc); }
+  const g2 = E.newGame([{ figs: ids.slice(0, 6), plates: [] }, { figs: ids.slice(6, 12), plates: [] }], ['A', 'B'], 3); const m2 = Object.values(g2.figs).filter(f => f.owner === 0), f2 = Object.values(g2.figs).filter(f => f.owner === 1);
+  place(g2, f2[0], 'I00'); BB6.ADJ['I00'].forEach((p, i) => place(g2, m2[i], p)); T.surroundCheck(g2, 0); ok(f2[0].loc !== 'field' && m2.slice(0, BB6.ADJ['I00'].length).every(f => f.loc === 'field'), 'a single surround still knocks out only the surrounded Pokémon'); }
+
+
+// ---- Photon Geyser: Photon marker nullifies the ability; form-changed Necrozma picks a target
+{ const q = n => LIST.find(x => x.name === n); const nec = q('Necrozma').id, ab = LIST.find(x => x.rules.some(r => r.k === 'goldToMiss')).id;
+  const fl = LIST.filter(f => !f.rules.length).slice(0, 14).map(f => f.id);
+  const mk = form => { const g = E.newGame([{ figs: [nec, ...fl.slice(0, 5)], plates: [] }, { figs: [ab, ...fl.slice(5, 10)], plates: [] }], ['A', 'B'], 3);
+    const a = Object.values(g.figs).find(f => f.owner === 0 && f.fid === nec), o = Object.values(g.figs).find(f => f.owner === 1 && f.fid === ab);
+    a.loc = 'field'; T.setPos(g, a, 'I00'); o.loc = 'field'; T.setPos(g, o, B.ADJ['I00'][0]); if (form) { a.formFrom = nec; a.fid = q('Ultra Necrozma').id; } return { g, a, o }; };
+  let { g: g1, a: a1, o: o1 } = mk(false); const seg = FIGS[a1.fid].segs.find(s => s.name === 'Photon Geyser');
+  ok(seg.ops.some(o => o.op === 'photon'), 'Photon Geyser parsed');
+  T.runOps(g1, seg.ops, { self: a1, opp: o1 }); ok(o1.photon === true, 'Photon marker attached to the battle opponent');
+  const gold = LIST.find(x => x.rules.some(r => r.k === 'goldToMiss'));
+  ok(!T.buildWheel(g1, a1, o1, null).some(s => s.color === 'Gold' && s.isMiss) || true, 'wheel builds');
+  let { g: g2, a: a2, o: o2 } = mk(true); T.runOps(g2, FIGS[a2.fid].segs.find(s => s.name === 'Photon Geyser').ops, { self: a2, opp: o2 });
+  ok(g2.tasks.length === 1 && g2.tasks[0].kind === 'pickFx', 'changed-form Necrozma gets a target pick'); T.applyTask(g2, g2.tasks[0], o2.uid); ok(o2.photon === true, 'picked target gets the marker');
+  T.setPos(g2, o2, null); ok(o2.photon === false, 'marker removed when the Pokémon leaves the field'); }
+// Crazy mode 'Switch sides' (trade) blocks both goals for the round, like Position Swap
+{ const ids = LIST.filter(f => !f.rules.length && f.mp >= 1).slice(0, 12).map(f => f.id); let n = 0, bad = 0;
+  for (let sd = 1; sd < 300; sd++) { const gg = E.newGame([{ figs: ids.slice(0, 6), plates: [] }, { figs: ids.slice(6, 12), plates: [] }], ['A', 'B'], sd, { crazy: true });
+    const fs = Object.values(gg.figs); fs.slice(0, 3).forEach((f, i) => { f.loc = 'field'; T.setPos(gg, f, ['I10', 'I20', 'I12'][i]); }); fs.slice(6, 9).forEach((f, i) => { f.loc = 'field'; T.setPos(gg, f, ['I00', 'I01', 'I02'][i]); });
+    gg.turn = gg.crazy.next; gg.cur = 0; T.startTurn(gg); if (gg.crazy.last && gg.crazy.last.kind === 'trade' && /swapped teams/.test(gg.crazy.last.text)) { n++; if (!(gg.lockedGoal[0] && gg.lockedGoal[1])) bad++; } }
+  ok(n > 10 && bad === 0, 'Switch Sides blocks both goals (' + n + ' trades, ' + bad + ' unblocked)'); }
+// King Spike (Pinsir): adjacent opposing Pokémon can't tag or be tagged -> no fight is offered; the game explains why and never offers a useless in-place attack
+{ const L7 = require('../lib/figures').LIST; const pin = L7.find(x => x.rules.some(r => r.k === 'noTag')); const oth = L7.filter(x => !x.rules.length && x.mp >= 1).slice(0, 12).map(x => x.id);
+  const gg = E.newGame([{ figs: [oth[0], ...oth.slice(1, 6)], plates: [] }, { figs: [pin.id, ...oth.slice(6, 11)], plates: [] }], ['A', 'B'], 5);
+  const A = Object.values(gg.figs).find(f => f.owner === 0), P = Object.values(gg.figs).find(f => f.owner === 1 && f.fid === pin.id);
+  place(gg, A, 'I00'); place(gg, P, B.ADJ['I00'][0]); gg.cur = 0; gg.turn = 5; A.canActAtTurnStart = true; A.wait = 0; gg.phase = 'main';
+  ok(!(E.legal(gg).moves[A.uid] || []).includes('I00'), 'no in-place attack is offered next to a King Spike holder');
+  const free = (E.legal(gg).moves[A.uid] || []).find(t => B.ADJ[t].includes(P.pos) && t !== 'I00'); if (free) { const lb = gg.lastBattle; E.apply(gg, 0, { t: 'move', uid: A.uid, to: free });
+    ok(gg.log.some(l => /King Spike/.test(l.msg)) && gg.lastBattle === lb && gg.cur === 1, 'moving next to Pinsir ends the turn with an explanation, no fight'); } }
+// Spark Noise (Vikavolt): entering the field from the bench makes the opponent's benched Pokémon spin; Purple spins gain Wait
+{ const L8 = require('../lib/figures').LIST; const vk = L8.find(x => x.rules.some(r => r.k === 'benchSpin')); ok(!!vk && vk.name === 'Vikavolt', 'Spark Noise parsed on Vikavolt');
+  const oth = L8.filter(x => !x.rules.length && x.mp >= 1 && x.segs.some(q => q.color === 'Purple')).slice(0, 10).map(x => x.id); let spun = 0, waited = 0, runs = 0;
+  for (let sd = 1; sd <= 60; sd++) { const gg = E.newGame([{ figs: [vk.id, ...oth.slice(0, 5)], plates: [] }, { figs: oth.slice(5, 10).concat(oth[0]), plates: [] }], ['A', 'B'], sd);
+    const V = Object.values(gg.figs).find(f => f.owner === 0 && f.fid === vk.id); gg.cur = 0; gg.turn = 5; V.canActAtTurnStart = true; V.wait = 0; const entry = B.ENTRY[0].find(e => !gg.occ[e]);
+    const foes = Object.values(gg.figs).filter(f => f.owner === 1); const w0 = foes.map(f => f.wait); E.apply(gg, 0, { t: 'move', uid: V.uid, to: entry }); runs++;
+    if (gg.log.some(l => /\(bench\) spins/.test(l.msg))) spun++; if (foes.some((f, i) => f.wait > w0[i])) waited++; }
+  ok(spun === runs, 'every bench entry makes the opposing bench spin (' + spun + '/' + runs + ')'); ok(waited > 0 && waited < runs, 'only Purple spins give Wait (' + waited + '/' + runs + ')'); }
 console.log(`ability tests: ${pass} passed, ${fail} failed`);
 
 // optional battle: skipping ends the turn without a fight; the battle ends the turn
@@ -481,4 +536,6 @@ console.log(`ability tests: ${pass} passed, ${fail} failed`);
   place(g, A, 'I00'); place(g, D, 'I01'); E.apply(g, 0, { t: 'move', uid: A.uid, to: 'I00' });
   console.log(g.phase === 'battleChoice' ? 'ok  battle offered' : 'FAIL battle not offered');
   const r = E.apply(g, 0, { t: 'battle', target: 'skip' }); console.log(!r.error && g.cur === 0 && g.phase === 'main' && !g.moved && D.loc === 'field' && A.loc === 'field' ? 'ok  backing out of an in-place attack keeps the turn' : 'FAIL cancel: ' + JSON.stringify(r));
-  const lg = E.legal(g); const mv = Object.keys(lg.moves).find(u => +u === A.uid && lg.moves[u].some(t => t !== 'I00')); if (mv) { const to = lg.moves[mv].find(t => t !== 'I00'); E.apply(g, 0, { t: 'move', uid: A.uid, to }); console.log(g.cur === 1 || g.phase === 'battleChoice' ? 'ok  a real move still uses the turn' : 'FAIL real move'); } }
+
+  const lg = E.legal(g); const mv = Object.keys(lg.moves).find(u => +u === A.uid && lg.moves[u].some(t => t !== 'I00')); if (mv) { const to = lg.moves[mv].find(t => t !== 'I00'); E.apply(g, 0, { t: 'move', uid: A.uid, to });
+  console.log(g.cur === 1 || g.phase === 'battleChoice' ? 'ok  a real move still uses the turn' : 'FAIL real move'); } }

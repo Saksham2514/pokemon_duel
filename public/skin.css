@@ -235,3 +235,13 @@ input:focus,select:focus{outline:2px solid var(--gold2);outline-offset:1px}
 
 /* In a match, the board and HUD animate constantly: a blurred backdrop behind them is re-rasterised every frame on phones (flicker/jank). The 3px blur is barely visible, so drop it in-game. */
 #game .panel, #game .zone, #game #dock, #game .camphead { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* Plates in a match: show ALL of them (wrapped, two per line on phones) instead of one sideways-scrolling strip where Retreat / Goal Block etc. were hidden off-screen. */
+#dock #actions .row.platerow, #actions .row.platerow { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); flex-wrap: wrap !important; overflow: visible !important; gap: 6px; }
+#dock #actions .row.platerow .platecard { width: 100%; box-sizing: border-box; justify-content: flex-start; min-height: 34px; padding: 4px 6px; gap: 4px; }
+#dock #actions .row.platerow .platecard .pc-ic { font-size: 15px; }
+#dock #actions .row.platerow .platecard .pc-cost { display: none; }
+#dock #actions .row.platerow .platecard .pn { display: inline !important; font-size: 11px; line-height: 1.05; text-align: left; }
+@media (max-width: 900px) { #dock #actions { max-height: 36vh; } }
+.drevo{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;margin:8px 0}
+.drevo .slotx{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}
